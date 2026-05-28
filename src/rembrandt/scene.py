@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from math import sin
 from pathlib import Path
 from typing import Literal
 
 import bpy
-from mathutils import Vector  # type: ignore
+from mathutils import Vector
 
+from rembrandt.camera.fit import fit_distance
+from rembrandt.camera.intrinsics import limiting_fov_from_camera
+from rembrandt.camera.orientation import (
+    require_nonzero_direction,
+    rotation_euler_from_forward,
+)
 from rembrandt.errors import ModelFileNotFoundError
+
+_CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
+_LIGHT_LOOK_AT_ERROR = "Light location and look_at cannot be the same point."
 
 
 class Scene:
@@ -31,6 +39,10 @@ class Scene:
         self.target: bpy.types.Object | None = None
         self.camera: bpy.types.Object | None = None
         self.lights: list[bpy.types.Object] = []
+        self._camera_requested_location: tuple[float, float, float] | None = None
+        self._camera_look_at: tuple[float, float, float] | None = None
+        self._camera_fit_target = False
+        self._camera_fit_margin = 1.2
         if clear:
             self.clear()
 
@@ -41,6 +53,9 @@ class Scene:
         self.target = None
         self.camera = None
         self.lights = []
+        self._camera_requested_location = None
+        self._camera_look_at = None
+        self._camera_fit_target = False
 
     def load_object(self, obj_path: str | Path) -> bpy.types.Object:
         """Load an .obj file as the target object for rendering.
@@ -138,24 +153,37 @@ class Scene:
         look_at_vec = Vector(look_at)
 
         if fit_target:
+            render = bpy.context.scene.render
             self._fit_camera_to_target(
                 camera_obj=camera_obj,
                 requested_location=location,
                 look_at=look_at_vec,
                 fit_margin=fit_margin,
+                resolution_x_in_px=render.resolution_x,
+                resolution_y_in_px=render.resolution_y,
+                pixel_aspect_x=render.pixel_aspect_x,
+                pixel_aspect_y=render.pixel_aspect_y,
             )
 
-        # Blender cameras look down their local -Z axis with +Y as up.
-        # to_track_quat('-Z', 'Y') gives the rotation that aligns the
-        # camera's view direction with `direction`.
-        direction = look_at_vec - Vector(camera_obj.location)
-        if direction.length == 0:
-            raise ValueError("Camera location and look_at cannot be the same point.")
-        camera_obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+        self._point_camera_at(camera_obj, look_at_vec)
+
+        self._camera_requested_location = location
+        self._camera_look_at = look_at
+        self._camera_fit_target = fit_target
+        self._camera_fit_margin = fit_margin
 
         bpy.context.scene.camera = camera_obj
         bpy.context.view_layer.update()
         return camera_obj
+
+    def _point_camera_at(self, camera_obj: bpy.types.Object, look_at: Vector) -> None:
+        """Orient the camera so its local -Z axis points at look_at."""
+        direction_vec = look_at - Vector(camera_obj.location)
+        direction = require_nonzero_direction(
+            (direction_vec.x, direction_vec.y, direction_vec.z),
+            error_message=_CAMERA_LOOK_AT_ERROR,
+        )
+        camera_obj.rotation_euler = rotation_euler_from_forward(direction)
 
     def _fit_camera_to_target(
         self,
@@ -164,48 +192,69 @@ class Scene:
         requested_location: tuple[float, float, float],
         look_at: Vector,
         fit_margin: float,
+        resolution_x_in_px: int,
+        resolution_y_in_px: int,
+        pixel_aspect_x: float,
+        pixel_aspect_y: float,
     ) -> None:
         """Move the camera back along its view direction until the target fits."""
         if self.target is None:
             return
-        if fit_margin <= 0:
-            raise ValueError("fit_margin must be greater than 0.")
 
         bpy.context.view_layer.update()
 
-        # bound_box stores the target's 8 corners in local object space.
-        # Multiplying by matrix_world gives the current world-space corners,
-        # including any translation done by center_target().
         corners = [
             self.target.matrix_world @ Vector(corner)
             for corner in self.target.bound_box
         ]
 
-        # Treat the target as a sphere centered on the point the camera
-        # looks at. The farthest bbox corner defines the sphere radius.
-        # This is conservative for long or rotated objects, but stable:
-        # if the sphere fits in the camera frustum, the whole bbox fits too.
         radius = max((corner - look_at).length for corner in corners)
 
-        # The sampled camera pose defines the view direction. Fitting should
-        # preserve that direction, so we only change distance along the same
-        # ray instead of sliding sideways or changing the look_at point.
         requested_direction = look_at - Vector(requested_location)
-        if requested_direction.length == 0:
-            raise ValueError("Camera location and look_at cannot be the same point.")
+        require_nonzero_direction(
+            (requested_direction.x, requested_direction.y, requested_direction.z),
+            error_message=_CAMERA_LOOK_AT_ERROR,
+        )
 
-        # Use the smaller horizontal/vertical field of view because it is the
-        # limiting axis for square and non-square renders. For a sphere of
-        # radius r to fit inside a cone with half-angle theta, the camera must
-        # be at least r / sin(theta) away. fit_margin scales r first to leave
-        # extra space around the target in the final image.
-        fov = min(camera_obj.data.angle_x, camera_obj.data.angle_y)
-        fit_distance = (radius * fit_margin) / sin(fov / 2)
+        fov = limiting_fov_from_camera(
+            cam=camera_obj.data,
+            resolution_x_in_px=resolution_x_in_px,
+            resolution_y_in_px=resolution_y_in_px,
+            pixel_aspect_x=pixel_aspect_x,
+            pixel_aspect_y=pixel_aspect_y,
+        )
+        min_distance = fit_distance(
+            target_radius=radius,
+            fov_rad=fov,
+            margin=fit_margin,
+        )
 
-        # Keep cameras that are already far enough away at their sampled
-        # distance; only move too-close cameras back along the same ray.
-        distance = max(requested_direction.length, fit_distance)
+        distance = max(requested_direction.length, min_distance)
         camera_obj.location = look_at - requested_direction.normalized() * distance
+
+    def _refit_camera_for_current_render_settings(self) -> None:
+        """Re-apply target fitting after render settings such as resolution change."""
+        if (
+            not self._camera_fit_target
+            or self.camera is None
+            or self._camera_requested_location is None
+            or self._camera_look_at is None
+        ):
+            return
+
+        render = bpy.context.scene.render
+        look_at = Vector(self._camera_look_at)
+        self._fit_camera_to_target(
+            camera_obj=self.camera,
+            requested_location=self._camera_requested_location,
+            look_at=look_at,
+            fit_margin=self._camera_fit_margin,
+            resolution_x_in_px=render.resolution_x,
+            resolution_y_in_px=render.resolution_y,
+            pixel_aspect_x=render.pixel_aspect_x,
+            pixel_aspect_y=render.pixel_aspect_y,
+        )
+        self._point_camera_at(self.camera, look_at)
 
     def add_light(
         self,
@@ -252,11 +301,13 @@ class Scene:
         bpy.context.collection.objects.link(light_obj)
         light_obj.location = location
 
-        # POINT is omnidirectional - rotation has no effect.
-        # SUN and AREA emit along local -Z, so the camera aiming logic applies.
         if light_type != "POINT":
-            direction = Vector(look_at) - Vector(location)
-            light_obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+            direction_vec = Vector(look_at) - Vector(location)
+            direction = require_nonzero_direction(
+                (direction_vec.x, direction_vec.y, direction_vec.z),
+                error_message=_LIGHT_LOOK_AT_ERROR,
+            )
+            light_obj.rotation_euler = rotation_euler_from_forward(direction)
 
         self.lights.append(light_obj)
         bpy.context.view_layer.update()
@@ -294,9 +345,6 @@ class Scene:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        # Map friendly names to bpy's internal engine identifiers.
-        # Note: Blender 5.x renamed BLENDER_EEVEE_NEXT back to BLENDER_EEVEE.
-        # We're pinned to bpy 4.5 LTS, so NEXT is correct.
         engine_id = {
             "EEVEE": "BLENDER_EEVEE_NEXT",
             "CYCLES": "CYCLES",
@@ -305,8 +353,6 @@ class Scene:
         bpy_scene = bpy.context.scene
         bpy_scene.camera = self.camera
 
-        # `bpy_scene.render` here is bpy's render-settings struct —
-        # not a method on our Scene class. Naming overlap, no conflict.
         bpy_scene.render.engine = engine_id
         bpy_scene.render.resolution_x = resolution[0]
         bpy_scene.render.resolution_y = resolution[1]
@@ -319,9 +365,8 @@ class Scene:
         else:
             bpy_scene.cycles.samples = samples
 
-        # Two-step render: render to internal buffer, then explicitly save.
-        # Avoids Blender's quirks around appending frame numbers and
-        # extra extensions to render.filepath.
+        self._refit_camera_for_current_render_settings()
+
         bpy.ops.render.render()
         bpy.data.images["Render Result"].save_render(filepath=str(output))
 
@@ -342,16 +387,11 @@ class Scene:
         if self.target is None:
             raise RuntimeError("No target loaded. Call load_object() first.")
 
-        # bound_box is 8 corner points in the target's *local* space.
-        # We multiply each by matrix_world to get world-space corners,
-        # then average them to find the world-space bbox center.
         world_corners = [
             self.target.matrix_world @ Vector(corner)
             for corner in self.target.bound_box
         ]
         center = sum(world_corners, Vector()) / 8
 
-        # Translating the origin by -center shifts the whole object
-        # so its bbox center lands at (0, 0, 0).
         self.target.location -= center
         bpy.context.view_layer.update()
