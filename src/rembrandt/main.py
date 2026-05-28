@@ -10,7 +10,7 @@ SAMPLE_OBJECT = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
 
 def main() -> None:
     poses = sample_camera_poses(
-        n=20,
+        n=10,
         azimuth_range=(0.0, 360.0),
         elevation_range=(-10.0, 30.0),
         distance_range=(3.0, 5.0),
