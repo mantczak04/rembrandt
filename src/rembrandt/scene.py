@@ -14,6 +14,7 @@ from rembrandt.camera.orientation import (
     require_nonzero_direction,
     rotation_euler_from_forward,
 )
+from rembrandt.convention import OBJ_IMPORT_FORWARD_AXIS, OBJ_IMPORT_UP_AXIS
 from rembrandt.errors import ModelFileNotFoundError
 
 _CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
@@ -75,7 +76,11 @@ class Scene:
             raise ModelFileNotFoundError(str(path))
 
         # Blender 4.x: bpy.ops.wm.obj_import (replaces import_scene.obj).
-        bpy.ops.wm.obj_import(filepath=str(path))
+        bpy.ops.wm.obj_import(
+            filepath=str(path),
+            forward_axis=OBJ_IMPORT_FORWARD_AXIS,
+            up_axis=OBJ_IMPORT_UP_AXIS,
+        )
 
         imported = [o for o in bpy.context.selected_objects if o.type == "MESH"]
         if not imported:
@@ -203,10 +208,7 @@ class Scene:
 
         bpy.context.view_layer.update()
 
-        corners = [
-            self.target.matrix_world @ Vector(corner)
-            for corner in self.target.bound_box
-        ]
+        corners = [self.target.matrix_world @ Vector(corner) for corner in self.target.bound_box]
 
         radius = max((corner - look_at).length for corner in corners)
 
@@ -388,8 +390,7 @@ class Scene:
             raise RuntimeError("No target loaded. Call load_object() first.")
 
         world_corners = [
-            self.target.matrix_world @ Vector(corner)
-            for corner in self.target.bound_box
+            self.target.matrix_world @ Vector(corner) for corner in self.target.bound_box
         ]
         center = sum(world_corners, Vector()) / 8
 

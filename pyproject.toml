@@ -14,20 +14,26 @@ authors = [
 ]
 dependencies = [
     "bpy==4.5.*",
+    "fastapi",
     "numpy>=1.26",
+    "pydantic>=2",
+    "pyyaml",
+    "rich",
+    "typer",
+    "uvicorn[standard]",
 ]
+
+[project.scripts]
+rembrandt-serve = "rembrandt.web.serve:main"
+rembrandt-render = "rembrandt.render:main"
 
 [project.optional-dependencies]
 dev = [
+    "httpx",
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
 ]
-preview = [
-    "plotly",
-    "streamlit",
-]
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/rembrandt"]
 
@@ -45,3 +51,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "bpy: requires the Blender Python runtime (bpy)",
+]

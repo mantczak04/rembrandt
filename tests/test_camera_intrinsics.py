@@ -49,9 +49,7 @@ def test_get_view_fac_in_px_auto_picks_horizontal() -> None:
 
 def test_get_view_fac_in_px_keeps_fractional_vertical_extent() -> None:
     cam = _CameraData(50.0, 0.0, 0.0, "VERTICAL", 36.0, 24.0)
-    assert get_view_fac_in_px(cam, 3.0, 4.0, 640, 481) == pytest.approx(
-        (4.0 / 3.0) * 481
-    )
+    assert get_view_fac_in_px(cam, 3.0, 4.0, 640, 481) == pytest.approx((4.0 / 3.0) * 481)
 
 
 def test_fov_from_k_matrix_square_symmetric() -> None:

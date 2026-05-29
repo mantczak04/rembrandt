@@ -1,0 +1,68 @@
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem 2rem;
+}
+
+.header {
+  max-width: 48rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: #f0f3f6;
+}
+
+.subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: #9da7b3;
+}
+
+.statusLine {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #8b949e;
+}
+
+.statusOk {
+  color: #3fb950;
+}
+
+.statusError {
+  color: #f85149;
+}
+
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr);
+  gap: 1.25rem;
+  align-items: stretch;
+  min-height: 32rem;
+}
+
+.viewportPane {
+  min-height: 28rem;
+}
+
+@media (max-width: 900px) {
+  .main {
+    grid-template-columns: 1fr;
+  }
+}

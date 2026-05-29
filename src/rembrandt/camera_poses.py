@@ -64,7 +64,7 @@ def sample_camera_poses(
     Raises:
         ValueError: If any range, count, or strategy is invalid.
     """
-    _validate_inputs(
+    validate_camera_pose_inputs(
         n=n,
         azimuth_range=azimuth_range,
         elevation_range=elevation_range,
@@ -98,7 +98,7 @@ def sample_camera_poses(
     )
 
 
-def _validate_inputs(
+def validate_camera_pose_inputs(
     *,
     n: int,
     azimuth_range: tuple[float, float],
@@ -106,6 +106,18 @@ def _validate_inputs(
     distance_range: tuple[float, float],
     strategy: str,
 ) -> None:
+    """Validate camera pose sampling inputs.
+
+    Args:
+        n: Number of poses to generate.
+        azimuth_range: Inclusive degree range around +Z.
+        elevation_range: Inclusive degree range above the XY plane.
+        distance_range: Inclusive world-unit range for distance sampling.
+        strategy: Sampling strategy name.
+
+    Raises:
+        ValueError: If any range, count, or strategy is invalid.
+    """
     if n <= 0:
         raise ValueError(f"n must be > 0, got {n}")
     if azimuth_range[0] > azimuth_range[1]:
@@ -120,6 +132,24 @@ def _validate_inputs(
         raise ValueError(f"distance_range min must be <= max, got {distance_range}")
     if strategy not in {"random", "fibonacci"}:
         raise ValueError(f"strategy must be one of 'random' or 'fibonacci', got {strategy!r}")
+
+
+def _validate_inputs(
+    *,
+    n: int,
+    azimuth_range: tuple[float, float],
+    elevation_range: tuple[float, float],
+    distance_range: tuple[float, float],
+    strategy: str,
+) -> None:
+    """Deprecated private wrapper for older in-repo callers."""
+    validate_camera_pose_inputs(
+        n=n,
+        azimuth_range=azimuth_range,
+        elevation_range=elevation_range,
+        distance_range=distance_range,
+        strategy=strategy,
+    )
 
 
 def _sample_random(

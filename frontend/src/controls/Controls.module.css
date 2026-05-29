@@ -1,0 +1,108 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #2d333b;
+  border-radius: 0.75rem;
+  background: #161b22;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+
+.fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.legend {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #c9d1d9;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  color: #9da7b3;
+}
+
+.input,
+.select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #30363d;
+  border-radius: 0.375rem;
+  background: #0d1117;
+  color: #f0f3f6;
+}
+
+.input:focus,
+.select:focus {
+  outline: 2px solid #388bfd;
+  outline-offset: 0;
+  border-color: #388bfd;
+}
+
+.rangeRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #c9d1d9;
+}
+
+.button {
+  padding: 0.55rem 1rem;
+  border: 1px solid #388bfd;
+  border-radius: 0.375rem;
+  background: #238636;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #2ea043;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #f85149;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #8b949e;
+}

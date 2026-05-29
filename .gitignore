@@ -19,7 +19,8 @@ dist/
 
 # project outputs
 output/
-EOF
+frontend/dist/
+frontend/node_modules/
 
 #test directories
 test-obj/

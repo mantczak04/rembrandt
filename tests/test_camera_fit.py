@@ -14,9 +14,7 @@ def test_fit_distance_known_value() -> None:
     fov = 1.0
     margin = 1.2
     expected = (radius * margin) / sin(fov / 2)
-    assert fit_distance(target_radius=radius, fov_rad=fov, margin=margin) == pytest.approx(
-        expected
-    )
+    assert fit_distance(target_radius=radius, fov_rad=fov, margin=margin) == pytest.approx(expected)
 
 
 def test_fit_distance_default_margin() -> None:
