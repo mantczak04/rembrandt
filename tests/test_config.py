@@ -16,8 +16,7 @@ from rembrandt.config import (
     dump_config,
     load_config,
 )
-
-SAMPLE_OBJECT_PATH = "test-obj/12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import SAMPLE_OBJECT_PATH
 
 
 def _minimal_config(*, n: int = 10, seed: int | None = 42) -> RembrandtConfig:

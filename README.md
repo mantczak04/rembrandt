@@ -139,6 +139,15 @@ CI runs both lanes; the bpy job uses `pytest -m bpy --require-bpy` so a missing 
 runtime fails loudly instead of skipping. Optional full-size sample assets live under
 `test-obj/` (gitignored); committed fixtures under `tests/fixtures/` cover parity in CI.
 
+To reproduce the original orientation report locally, copy
+`12951_Stone_Chess_Board_v1_L3.obj` into `test-obj/` and run:
+
+```bash
+pytest tests/test_convention.py::test_orient_and_center_matches_bpy_import_on_chess_board_object \
+  tests/test_render_orientation.py::test_rendered_view_keeps_world_z_upright_on_chess_board_object \
+  -v --require-bpy
+```
+
 The old Streamlit / Plotly camera-pose preview has been retired. The React + Three.js SPA is now the only preview UI.
 
 Copyright @conchiglia 2026
