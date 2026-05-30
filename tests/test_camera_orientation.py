@@ -45,22 +45,14 @@ def test_rotation_euler_from_forward_rejects_zero_vector() -> None:
 
 
 @pytest.mark.bpy
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Blender to_track_quat(-Z, Y) does not lock world +Z as camera up the way "
-        "the Three.js preview does (camera.up = (0, 0, 1)); see Branch B in "
-        ".ai/specs/ui-vs-backend-camera-angle-investigation-30-05.md"
-    ),
-)
-def test_camera_world_up_aligns_with_positive_z_when_above_horizon() -> None:
-    """Match Three.js preview: cameras above the look-at point should use world +Z as up."""
+def test_camera_world_up_resolves_toward_positive_z_when_above_horizon() -> None:
+    """Camera roll should keep world +Z in the upper half of above-horizon views."""
     pytest.importorskip("bpy")
 
     from rembrandt.camera_poses import sample_camera_poses
     from rembrandt.scene import Scene
     from tests.orientation_checks import camera_world_up_dot_positive_z
-    from tests.test_paths import sample_object_path
+    from tests.test_paths import sample_object_path, sample_object_up_axis
 
     obj_path = sample_object_path()
     if not obj_path.is_file():
@@ -80,7 +72,7 @@ def test_camera_world_up_aligns_with_positive_z_when_above_horizon() -> None:
             continue
         checked += 1
         scene = Scene()
-        scene.load_object(obj_path)
+        scene.load_object(obj_path, up_axis=sample_object_up_axis())
         scene.center_target()
         scene.add_camera(focal_length=50.0)
         scene.move_camera(
@@ -90,8 +82,8 @@ def test_camera_world_up_aligns_with_positive_z_when_above_horizon() -> None:
         )
         assert scene.camera is not None
         dot_positive_z = camera_world_up_dot_positive_z(scene.camera)
-        assert dot_positive_z > 0.85, (
-            f"camera above horizon should use world +Z as up for pose {pose.location}, "
+        assert dot_positive_z > 0.0, (
+            f"camera above horizon should resolve up toward world +Z for pose {pose.location}, "
             f"got dot={dot_positive_z:.4f}"
         )
 

@@ -3,7 +3,7 @@ import type { RembrandtConfig } from "./types";
 /** Defaults mirroring ``rembrandt.config.RembrandtConfig``. */
 export function createDefaultConfig(objectPath = ""): RembrandtConfig {
   return {
-    object: { path: objectPath },
+    object: { path: objectPath, up_axis: "Y" },
     camera: {
       n: 10,
       azimuth_range: [0, 360],

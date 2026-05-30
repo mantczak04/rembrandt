@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rembrandt.convention import orient_and_center
+from rembrandt.convention import SourceUpAxis, orient_and_center
 from rembrandt.errors import ModelFileNotFoundError
 
 
@@ -27,11 +27,12 @@ class PreviewMesh:
     bbox: list[list[float]]
 
 
-def load_preview_mesh(path: str | Path) -> PreviewMesh:
+def load_preview_mesh(path: str | Path, *, up_axis: SourceUpAxis = "Y") -> PreviewMesh:
     """Load an ``.obj`` file, orient it to the canonical frame, and return preview geometry.
 
     Args:
         path: Filesystem path to a Wavefront ``.obj`` file.
+        up_axis: Native up-axis of the source OBJ.
 
     Returns:
         Serializable mesh data ready for the preview API / Three.js.
@@ -50,7 +51,7 @@ def load_preview_mesh(path: str | Path) -> PreviewMesh:
         raise ValueError(msg)
 
     vertex_array = np.asarray(vertices, dtype=np.float64)
-    centered, bbox = orient_and_center(vertex_array)
+    centered, bbox = orient_and_center(vertex_array, up_axis=up_axis)
     return PreviewMesh(
         positions=centered.reshape(-1).tolist(),
         indices=[index for triangle in _triangles for index in triangle],

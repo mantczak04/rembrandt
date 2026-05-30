@@ -83,6 +83,7 @@ def test_config_round_trip_full_fields(tmp_path: Path) -> None:
 def test_config_defaults_applied() -> None:
     cfg = _minimal_config()
 
+    assert cfg.object.up_axis == "Y"
     assert cfg.camera.azimuth_range == (0.0, 360.0)
     assert cfg.camera.elevation_range == (-10.0, 30.0)
     assert cfg.camera.distance_range == (3.0, 5.0)
@@ -148,3 +149,29 @@ camera:
     assert cfg.camera.azimuth_range == (10.0, 90.0)
     assert cfg.camera.elevation_range == (-5.0, 15.0)
     assert cfg.camera.distance_range == (2.5, 4.5)
+
+
+def test_load_config_accepts_object_up_axis(tmp_path: Path) -> None:
+    yaml_text = f"""
+object:
+  path: {SAMPLE_OBJECT_PATH}
+  up_axis: Z
+camera:
+  n: 5
+"""
+    path = tmp_path / "z_up.yaml"
+    path.write_text(yaml_text, encoding="utf-8")
+
+    cfg = load_config(path)
+
+    assert cfg.object.up_axis == "Z"
+
+
+def test_object_config_rejects_invalid_up_axis() -> None:
+    with pytest.raises(ValidationError, match="up_axis"):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH, "up_axis": "X"},
+                "camera": {"n": 1},
+            }
+        )

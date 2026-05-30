@@ -5,6 +5,7 @@ import type {
   PreviewPosesParams,
   RembrandtConfig,
   SaveConfigResponse,
+  SourceUpAxis,
 } from "./types";
 
 const API_BASE = "/api";
@@ -33,8 +34,11 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return parseJsonResponse<HealthResponse>(response);
 }
 
-export async function fetchMesh(path: string): Promise<PreviewMesh> {
-  return postJson<PreviewMesh>("/preview/mesh", { path });
+export async function fetchMesh(
+  path: string,
+  upAxis: SourceUpAxis = "Y",
+): Promise<PreviewMesh> {
+  return postJson<PreviewMesh>("/preview/mesh", { path, up_axis: upAxis });
 }
 
 export function fetchPoses(

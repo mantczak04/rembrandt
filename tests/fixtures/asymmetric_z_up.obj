@@ -1,0 +1,7 @@
+# Minimal Z-up mesh: spike on +Z and asymmetric X/Y feet.
+v 0 0 0
+v 0 0 3
+v 1 0 0
+v 0 2 0
+f 1 2 3
+f 1 2 4

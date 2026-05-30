@@ -10,9 +10,14 @@ import pytest
 from rembrandt.convention import (
     OBJ_IMPORT_FORWARD_AXIS,
     OBJ_IMPORT_UP_AXIS,
+    SourceUpAxis,
+    obj_import_axes,
     orient_and_center,
 )
-from tests.test_paths import chess_board_object_path, sample_object_path
+from tests.test_paths import PROJECT_ROOT, chess_board_object_path, sample_object_path
+
+Y_UP_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_y_up.obj"
+Z_UP_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_z_up.obj"
 
 
 def _parse_obj_vertices(path: Path) -> np.ndarray:
@@ -44,6 +49,8 @@ def _sort_vertices(vertices: np.ndarray) -> np.ndarray:
 def test_obj_import_axis_constants() -> None:
     assert OBJ_IMPORT_FORWARD_AXIS == "NEGATIVE_Z"
     assert OBJ_IMPORT_UP_AXIS == "Y"
+    assert obj_import_axes("Y") == ("NEGATIVE_Z", "Y")
+    assert obj_import_axes("Z") == ("Y", "Z")
 
 
 def test_orient_and_center_raises_on_empty() -> None:
@@ -59,6 +66,14 @@ def test_orient_and_center_raises_on_bad_shape() -> None:
 def test_orient_and_center_maps_y_up_to_z_up() -> None:
     vertices = np.array([[0.0, 0.0, 0.0], [0.0, 2.0, 0.0]], dtype=np.float64)
     centered, bbox = orient_and_center(vertices)
+    assert bbox[1, 2] - bbox[0, 2] == pytest.approx(2.0)
+    assert bbox[0, 1] == pytest.approx(bbox[1, 1])
+    np.testing.assert_allclose(centered[:, 2], [-1.0, 1.0], atol=1e-12)
+
+
+def test_orient_and_center_preserves_z_up() -> None:
+    vertices = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.0]], dtype=np.float64)
+    centered, bbox = orient_and_center(vertices, up_axis="Z")
     assert bbox[1, 2] - bbox[0, 2] == pytest.approx(2.0)
     assert bbox[0, 1] == pytest.approx(bbox[1, 1])
     np.testing.assert_allclose(centered[:, 2], [-1.0, 1.0], atol=1e-12)
@@ -81,32 +96,94 @@ def test_orient_and_center_places_bbox_at_origin() -> None:
 
 @pytest.mark.bpy
 def test_orient_and_center_matches_bpy_import() -> None:
-    bpy = pytest.importorskip("bpy")
-    from mathutils import Vector
+    _assert_orient_and_center_matches_bpy_import(sample_object_path(), up_axis="Y")
 
-    from rembrandt.scene import Scene
 
-    obj_path = sample_object_path()
+@pytest.mark.bpy
+def test_orient_and_center_matches_bpy_import_on_y_up_fixture() -> None:
+    _assert_orient_and_center_matches_bpy_import(Y_UP_FIXTURE_OBJ, up_axis="Y")
+
+
+@pytest.mark.bpy
+def test_orient_and_center_matches_bpy_import_on_z_up_fixture() -> None:
+    _assert_orient_and_center_matches_bpy_import(Z_UP_FIXTURE_OBJ, up_axis="Z")
+
+
+@pytest.mark.bpy
+def test_orient_and_center_matches_bpy_import_on_chess_board_object() -> None:
+    """Parity on the asset named in the original orientation bug report."""
+    obj_path = chess_board_object_path()
+    if not obj_path.is_file():
+        pytest.skip(
+            f"reported drift asset not found at {obj_path}; "
+            "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
+        )
+
+    _assert_orient_and_center_matches_bpy_import(obj_path, up_axis="Z")
+
+
+@pytest.mark.bpy
+def test_chess_board_object_z_up_axis_lands_on_world_z() -> None:
+    """The reported pawn is Z-up native and should stand on world Z."""
+    pytest.importorskip("bpy")
+
+    obj_path = chess_board_object_path()
+    if not obj_path.is_file():
+        pytest.skip(
+            f"reported drift asset not found at {obj_path}; "
+            "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
+        )
+
     raw_vertices = _parse_obj_vertices(obj_path)
+    centered, _bbox = orient_and_center(raw_vertices, up_axis="Z")
+    extents = centered.max(axis=0) - centered.min(axis=0)
+    assert np.argmax(extents) == 2
 
-    scene = Scene()
-    scene.load_object(obj_path)
-    scene.center_target()
+    scene = _load_scene_object(obj_path, up_axis="Z")
     assert scene.target is not None
-    bpy_vertices = np.array(
+    scene_vertices = np.array(
         [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
         dtype=np.float64,
     )
+    scene_extents = scene_vertices.max(axis=0) - scene_vertices.min(axis=0)
+    assert np.argmax(scene_extents) == 2
 
-    pure_vertices, _bbox = orient_and_center(raw_vertices)
-    _assert_vertex_sets_allclose(pure_vertices, bpy_vertices)
+
+def _load_scene_object(obj_path: Path, *, up_axis: SourceUpAxis):
+    from rembrandt.scene import Scene
+
+    scene = Scene()
+    scene.load_object(obj_path, up_axis=up_axis)
+    scene.center_target()
+    return scene
+
+
+def _assert_orient_and_center_matches_bpy_import(
+    obj_path: Path,
+    *,
+    up_axis: SourceUpAxis,
+) -> None:
+    bpy = pytest.importorskip("bpy")
+    from mathutils import Vector
+
+    raw_vertices = _parse_obj_vertices(obj_path)
+    pure_vertices, _bbox = orient_and_center(raw_vertices, up_axis=up_axis)
+
+    scene = _load_scene_object(obj_path, up_axis=up_axis)
+    assert scene.target is not None
+    scene_vertices = np.array(
+        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
+        dtype=np.float64,
+    )
+    _assert_vertex_sets_allclose(pure_vertices, scene_vertices)
 
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
+    forward_axis, import_up_axis = obj_import_axes(up_axis)
     bpy.ops.wm.obj_import(
         filepath=str(obj_path),
-        forward_axis=OBJ_IMPORT_FORWARD_AXIS,
-        up_axis=OBJ_IMPORT_UP_AXIS,
+        forward_axis=forward_axis,
+        up_axis=import_up_axis,
     )
     imported = [obj for obj in bpy.context.selected_objects if obj.type == "MESH"][0]
     corners = [imported.matrix_world @ Vector(corner) for corner in imported.bound_box]
@@ -117,31 +194,3 @@ def test_orient_and_center_matches_bpy_import() -> None:
         dtype=np.float64,
     )
     _assert_vertex_sets_allclose(pure_vertices, direct_vertices)
-
-
-@pytest.mark.bpy
-def test_orient_and_center_matches_bpy_import_on_chess_board_object() -> None:
-    """Parity on the asset named in the original orientation bug report."""
-    pytest.importorskip("bpy")
-    from rembrandt.scene import Scene
-
-    obj_path = chess_board_object_path()
-    if not obj_path.is_file():
-        pytest.skip(
-            f"reported drift asset not found at {obj_path}; "
-            "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
-        )
-
-    raw_vertices = _parse_obj_vertices(obj_path)
-
-    scene = Scene()
-    scene.load_object(obj_path)
-    scene.center_target()
-    assert scene.target is not None
-    bpy_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
-        dtype=np.float64,
-    )
-
-    pure_vertices, _bbox = orient_and_center(raw_vertices)
-    _assert_vertex_sets_allclose(pure_vertices, bpy_vertices)

@@ -24,6 +24,18 @@ def split_vertices_by_world_z(
     return vertices[high_mask], vertices[low_mask]
 
 
+def assert_world_z_is_dominant_axis(vertices: npt.NDArray[np.float64]) -> None:
+    """Fail when the mesh's largest bbox extent is not aligned to world Z."""
+    extents = vertices.max(axis=0) - vertices.min(axis=0)
+    dominant_axis = int(np.argmax(extents))
+    if dominant_axis != 2:
+        msg = (
+            "expected the object's dominant bbox axis to be world Z, "
+            f"got extents x={extents[0]:.4f}, y={extents[1]:.4f}, z={extents[2]:.4f}"
+        )
+        raise AssertionError(msg)
+
+
 def camera_world_up_dot_positive_z(camera: Object) -> float:
     """Dot product of the camera's world-space up vector with +Z."""
     import bpy  # noqa: F401

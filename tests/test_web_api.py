@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from rembrandt.config import RembrandtConfig, load_config
 from rembrandt.preview.mesh import load_preview_mesh
 from rembrandt.web.app import create_app
-from tests.test_paths import SAMPLE_OBJECT_PATH, sample_object_path
+from tests.test_paths import SAMPLE_OBJECT_PATH, sample_object_path, sample_object_up_axis
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def client() -> TestClient:
 def test_preview_mesh_returns_geometry(client: TestClient) -> None:
     response = client.post(
         "/api/preview/mesh",
-        json={"path": str(sample_object_path())},
+        json={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
     )
 
     assert response.status_code == 200
@@ -43,7 +43,7 @@ def test_preview_mesh_missing_path_returns_404(client: TestClient) -> None:
 
 
 def test_preview_poses_returns_n_camera_points(client: TestClient) -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     response = client.post(
         "/api/preview/poses",
         json={
@@ -66,7 +66,7 @@ def test_preview_poses_returns_n_camera_points(client: TestClient) -> None:
 
 
 def test_preview_poses_invalid_camera_params_returns_400(client: TestClient) -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     response = client.post(
         "/api/preview/poses",
         json={

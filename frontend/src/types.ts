@@ -8,6 +8,7 @@ export type SamplingStrategy = "random" | "fibonacci";
 export type LightType = "POINT" | "SUN" | "AREA";
 export type RenderEngine = "EEVEE" | "CYCLES";
 export type BandEdgeKind = "azimuth" | "elevation";
+export type SourceUpAxis = "Y" | "Z";
 
 export type HealthResponse = {
   status: string;
@@ -68,6 +69,7 @@ export type PreviewPoses = {
 
 export type ObjectConfig = {
   path: string;
+  up_axis?: SourceUpAxis;
 };
 
 export type CameraConfig = {

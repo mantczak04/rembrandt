@@ -5,40 +5,85 @@ plane). Imported meshes must therefore have their visual up aligned to +Z and si
 with their axis-aligned bounding-box center at the origin — the same frame
 ``Scene.center_target`` produces after import.
 
-Wavefront ``.obj`` files are typically authored Y-up. Blender's ``obj_import``
-operator remaps axes via ``up_axis`` / ``forward_axis``; the constants below match
-the default Blender 4.x import that rotates Y-up assets into Blender's Z-up world
-(a fixed +90° rotation about +X). The pure function ``orient_and_center`` applies
-that same rotation and bbox centering without bpy.
+Wavefront ``.obj`` files may be authored Y-up or Z-up. Blender's ``obj_import``
+operator remaps axes via ``up_axis`` / ``forward_axis``; the declarations below
+keep each supported source orientation's pure rotation matrix next to its Blender
+import axes so preview and render cannot drift.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Literal
+
 import numpy as np
 import numpy.typing as npt
 
-# Values for bpy.ops.wm.obj_import (Blender 4.x). Keep in sync with orient_and_center.
-OBJ_IMPORT_FORWARD_AXIS = "NEGATIVE_Z"
-OBJ_IMPORT_UP_AXIS = "Y"
+SourceUpAxis = Literal["Y", "Z"]
+BlenderImportAxis = Literal["X", "Y", "Z", "NEGATIVE_X", "NEGATIVE_Y", "NEGATIVE_Z"]
 
-# Y-up (OBJ) -> Z-up (Rembrandt). Equivalent to Blender's default obj_import remap.
-_Y_UP_TO_Z_UP = np.array(
-    [
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0],
-    ],
-    dtype=np.float64,
-)
+
+@dataclass(frozen=True)
+class SourceOrientation:
+    """Shared pure-Python and Blender import orientation declaration."""
+
+    rotation: npt.NDArray[np.float64]
+    forward_axis: BlenderImportAxis
+    up_axis: SourceUpAxis
+
+
+SOURCE_ORIENTATIONS: dict[SourceUpAxis, SourceOrientation] = {
+    # Y-up OBJ -> Rembrandt Z-up. Equivalent to Blender's default OBJ import remap.
+    "Y": SourceOrientation(
+        rotation=np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=np.float64,
+        ),
+        forward_axis="NEGATIVE_Z",
+        up_axis="Y",
+    ),
+    # Z-up OBJ -> Rembrandt Z-up. Verified against Blender obj_import with an
+    # asymmetric fixture; forward_axis="Y" leaves coordinates in the same frame.
+    "Z": SourceOrientation(
+        rotation=np.identity(3, dtype=np.float64),
+        forward_axis="Y",
+        up_axis="Z",
+    ),
+}
+
+# Default values for bpy.ops.wm.obj_import (Blender 4.x). Kept for callers/tests
+# that only care about the default Y-up convention.
+OBJ_IMPORT_FORWARD_AXIS = SOURCE_ORIENTATIONS["Y"].forward_axis
+OBJ_IMPORT_UP_AXIS = SOURCE_ORIENTATIONS["Y"].up_axis
+
+
+def obj_import_axes(up_axis: SourceUpAxis = "Y") -> tuple[BlenderImportAxis, SourceUpAxis]:
+    """Return Blender ``obj_import`` axes for a declared source up-axis.
+
+    Args:
+        up_axis: Native up-axis of the source OBJ.
+
+    Returns:
+        ``(forward_axis, up_axis)`` values for ``bpy.ops.wm.obj_import``.
+    """
+    orientation = SOURCE_ORIENTATIONS[up_axis]
+    return orientation.forward_axis, orientation.up_axis
 
 
 def orient_and_center(
     vertices: npt.ArrayLike,
+    *,
+    up_axis: SourceUpAxis = "Y",
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Rotate Y-up OBJ vertices to Z-up and center on the axis-aligned bbox.
+    """Rotate source OBJ vertices to Z-up and center on the axis-aligned bbox.
 
     Args:
         vertices: Array of shape ``(n, 3)`` with raw OBJ vertex positions.
+        up_axis: Native up-axis of the source OBJ.
 
     Returns:
         A tuple of ``(centered_vertices, bbox)`` where ``bbox`` is a ``(2, 3)``
@@ -54,7 +99,7 @@ def orient_and_center(
     if coords.shape[0] == 0:
         raise ValueError("vertices must not be empty")
 
-    oriented = coords @ _Y_UP_TO_Z_UP.T
+    oriented = coords @ SOURCE_ORIENTATIONS[up_axis].rotation.T
     bbox_min = oriented.min(axis=0)
     bbox_max = oriented.max(axis=0)
     center = (bbox_min + bbox_max) / 2.0

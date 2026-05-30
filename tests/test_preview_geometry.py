@@ -16,12 +16,12 @@ from rembrandt.preview.geometry import (
     spherical_to_cartesian,
 )
 from rembrandt.preview.mesh import load_preview_mesh
-from tests.test_paths import sample_object_path
+from tests.test_paths import sample_object_path, sample_object_up_axis
 
 
 @pytest.mark.parametrize("strategy", ["random", "fibonacci"])
 def test_build_preview_pose_geometry_camera_count(strategy: SamplingStrategy) -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     geometry = build_preview_pose_geometry(
         bbox=mesh.bbox,
         n=25,
@@ -34,7 +34,7 @@ def test_build_preview_pose_geometry_camera_count(strategy: SamplingStrategy) ->
 
 
 def test_build_preview_pose_geometry_band_within_angular_bounds() -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     azimuth_range = (20.0, 120.0)
     elevation_range = (-15.0, 25.0)
     look_at = (1.0, -2.0, 0.5)
@@ -58,7 +58,7 @@ def test_build_preview_pose_geometry_band_within_angular_bounds() -> None:
 
 
 def test_build_preview_pose_geometry_ground_plane_at_bbox_base() -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     geometry = build_preview_pose_geometry(bbox=mesh.bbox, n=5, seed=1)
     z_base = mesh.bbox[0][2]
     plane_z = np.asarray(geometry.ground_plane.positions, dtype=np.float64).reshape(-1, 3)[:, 2]
@@ -87,7 +87,7 @@ def test_band_display_radius_wraps_large_objects() -> None:
 
 
 def test_preview_band_uses_display_radius_for_legibility() -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     geometry = build_preview_pose_geometry(
         bbox=mesh.bbox,
         n=5,

@@ -9,6 +9,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from rembrandt.camera_poses import SamplingStrategy, validate_camera_pose_inputs
+from rembrandt.convention import SourceUpAxis
 
 LightType = Literal["POINT", "SUN", "AREA"]
 RenderEngine = Literal["EEVEE", "CYCLES"]
@@ -18,6 +19,7 @@ class ObjectConfig(BaseModel):
     """Input object for rendering."""
 
     path: str
+    up_axis: SourceUpAxis = "Y"
 
 
 class CameraConfig(BaseModel):

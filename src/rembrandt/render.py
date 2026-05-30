@@ -72,7 +72,7 @@ def render_from_config(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     scene = scene_factory() if scene_factory is not None else Scene()
-    scene.load_object(object_path)
+    scene.load_object(object_path, up_axis=cfg.object.up_axis)
     scene.center_target()
 
     for light in cfg.lights:

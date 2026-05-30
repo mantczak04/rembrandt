@@ -9,12 +9,17 @@ import numpy as np
 import pytest
 
 from rembrandt.camera_poses import sample_camera_poses
+from rembrandt.convention import SourceUpAxis
 from rembrandt.scene import Scene
-from tests.orientation_checks import assert_world_z_upright_in_camera_view
-from tests.test_paths import chess_board_object_path, sample_object_path
+from tests.orientation_checks import (
+    assert_world_z_is_dominant_axis,
+    assert_world_z_upright_in_camera_view,
+)
+from tests.test_paths import chess_board_object_path, sample_object_path, sample_object_up_axis
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_y_up.obj"
+Z_UP_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_z_up.obj"
 
 
 def _scene_vertices(scene: Scene) -> np.ndarray:
@@ -25,7 +30,13 @@ def _scene_vertices(scene: Scene) -> np.ndarray:
     )
 
 
-def _assert_upright_for_poses(obj_path: Path, *, n_poses: int, seed: int) -> None:
+def _assert_upright_for_poses(
+    obj_path: Path,
+    *,
+    up_axis: SourceUpAxis,
+    n_poses: int,
+    seed: int,
+) -> None:
     poses = sample_camera_poses(
         n=n_poses,
         seed=seed,
@@ -36,8 +47,10 @@ def _assert_upright_for_poses(obj_path: Path, *, n_poses: int, seed: int) -> Non
 
     for pose in poses:
         scene = Scene()
-        scene.load_object(obj_path)
+        scene.load_object(obj_path, up_axis=up_axis)
         scene.center_target()
+        vertices = _scene_vertices(scene)
+        assert_world_z_is_dominant_axis(vertices)
         scene.add_camera(focal_length=50.0)
         scene.move_camera(
             location=pose.location,
@@ -48,20 +61,30 @@ def _assert_upright_for_poses(obj_path: Path, *, n_poses: int, seed: int) -> Non
         assert_world_z_upright_in_camera_view(
             bpy.context.scene,
             scene.camera,
-            _scene_vertices(scene),
+            vertices,
         )
 
 
 @pytest.mark.bpy
-@pytest.mark.parametrize("obj_path", [sample_object_path(), FIXTURE_OBJ])
-def test_rendered_view_keeps_world_z_upright(obj_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("obj_path", "up_axis"),
+    [
+        (sample_object_path(), sample_object_up_axis()),
+        (FIXTURE_OBJ, "Y"),
+        (Z_UP_FIXTURE_OBJ, "Z"),
+    ],
+)
+def test_rendered_view_keeps_world_z_upright(
+    obj_path: Path,
+    up_axis: SourceUpAxis,
+) -> None:
     """High world-Z mesh points must project above low-Z points in the camera view."""
     pytest.importorskip("bpy")
 
     if not obj_path.is_file():
         pytest.skip(f"object not found: {obj_path}")
 
-    _assert_upright_for_poses(obj_path, n_poses=6, seed=0)
+    _assert_upright_for_poses(obj_path, up_axis=up_axis, n_poses=6, seed=0)
 
 
 @pytest.mark.bpy
@@ -76,4 +99,4 @@ def test_rendered_view_keeps_world_z_upright_on_chess_board_object() -> None:
             "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
         )
 
-    _assert_upright_for_poses(obj_path, n_poses=8, seed=42)
+    _assert_upright_for_poses(obj_path, up_axis="Z", n_poses=8, seed=42)

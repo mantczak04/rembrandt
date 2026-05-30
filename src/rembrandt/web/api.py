@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from rembrandt.config import RembrandtConfig, dump_config
+from rembrandt.convention import SourceUpAxis
 from rembrandt.errors import ModelFileNotFoundError
 from rembrandt.preview.geometry import (
     PreviewPoseGeometry,
@@ -25,6 +26,7 @@ class PreviewMeshRequest(BaseModel):
     """Request body for mesh preview."""
 
     path: str
+    up_axis: SourceUpAxis = "Y"
 
 
 class PreviewMeshResponse(BaseModel):
@@ -105,7 +107,7 @@ class SaveConfigResponse(BaseModel):
 def preview_mesh(body: PreviewMeshRequest) -> PreviewMeshResponse:
     """Load and orient an ``.obj`` file for the SPA preview."""
     try:
-        mesh = load_preview_mesh(body.path)
+        mesh = load_preview_mesh(body.path, up_axis=body.up_axis)
     except ModelFileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

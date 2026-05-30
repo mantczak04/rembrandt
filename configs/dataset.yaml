@@ -1,7 +1,7 @@
 object:
   path: /home/macko/projects/rembrandt/test-obj/chess.obj
 camera:
-  n: 100
+  n: 50
   azimuth_range:
   - 180.0
   - 360.0

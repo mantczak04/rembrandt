@@ -43,13 +43,13 @@ violated, but treat them as design constraints, not just test targets.
    orient/center transform into TypeScript. If the frontend needs a computed value, add
    an endpoint.
 3. **One orientation/centering convention, defined once.** `convention.py` holds both the
-   `bpy.ops.wm.obj_import` axis constants (`OBJ_IMPORT_FORWARD_AXIS`,
-   `OBJ_IMPORT_UP_AXIS`) and the pure-Python `orient_and_center()` used by the preview.
-   `scene.py`'s import path and the preview path must produce the same frame — they must
-   not drift. `test_orient_and_center_matches_bpy_import` (bpy-marked) is the parity check.
+   `bpy.ops.wm.obj_import` axes and the pure-Python `orient_and_center()` mapping used by
+   the preview. Source OBJ up-axis is explicit (`object.up_axis`, default `Y`, optional
+   `Z`) and both paths must derive from that declaration — they must not drift.
+   `test_orient_and_center_matches_bpy_import` (bpy-marked) is the parity check.
 4. **+Z is world up; cameras/lights use -Z forward, Y up.** Elevation is measured from the
-   XY plane (`z = distance * sin(elevation)`). Objects are imported Y-up → Z-up and
-   centered on their bounding-box center.
+   XY plane (`z = distance * sin(elevation)`). Objects are oriented from their declared
+   source up-axis into +Z and centered on their bounding-box center.
 5. **The preview is about angles, not distance.** Band/ground-plane radius is cosmetic
    (a display radius so the band wraps the object legibly). Do **not** apply camera-fit /
    framing math in the preview — fit only affects distance, which the preview ignores.

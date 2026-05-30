@@ -10,7 +10,7 @@ import pytest
 
 from rembrandt.config import RembrandtConfig, dump_config, load_config
 from rembrandt.render import render, render_from_config, resolve_object_path
-from tests.test_paths import PROJECT_ROOT, sample_object_path
+from tests.test_paths import PROJECT_ROOT, sample_object_path, sample_object_up_axis
 
 
 def test_resolve_object_path_relative_to_project_root() -> None:
@@ -34,7 +34,7 @@ def test_resolve_object_path_relative_to_config_directory(tmp_path: Path) -> Non
 def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     config_path = tmp_path / "render.yaml"
     cfg = RembrandtConfig(
-        object={"path": str(sample_object_path())},
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
         camera={"n": 3, "seed": 1},
         lights=[
             {
@@ -60,7 +60,10 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     )
 
     assert output_dir == tmp_path / "frames" / "test-run"
-    scene.load_object.assert_called_once_with(sample_object_path().resolve())
+    scene.load_object.assert_called_once_with(
+        sample_object_path().resolve(),
+        up_axis=sample_object_up_axis(),
+    )
     scene.center_target.assert_called_once()
     assert scene.add_light.call_count == 1
     scene.add_camera.assert_called_once_with(focal_length=35.0)
@@ -124,7 +127,7 @@ def test_render_smoke_writes_frames(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         else str(obj_path)
     )
     cfg = RembrandtConfig(
-        object={"path": object_path},
+        object={"path": object_path, "up_axis": sample_object_up_axis()},
         camera={"n": 2, "seed": 0},
         render={"resolution": (64, 64), "samples": 1},
         output={"dir": str(output_root)},

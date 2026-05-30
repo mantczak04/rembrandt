@@ -11,6 +11,7 @@ import type {
   PreviewPoses,
   PreviewPosesParams,
   RembrandtConfig,
+  SourceUpAxis,
 } from "./types";
 import styles from "./App.module.css";
 
@@ -103,16 +104,17 @@ export default function App() {
       return;
     }
 
+    const upAxis = config.object.up_axis ?? "Y";
     setLoadingMesh(true);
     setMeshError(null);
     setPoses(null);
     try {
-      const nextMesh = await fetchMesh(path);
+      const nextMesh = await fetchMesh(path, upAxis);
       setMesh(nextMesh);
       let cameraForPoses = config.camera;
       setConfig((current) => {
         cameraForPoses = current.camera;
-        return { ...current, object: { path } };
+        return { ...current, object: { path, up_axis: upAxis } };
       });
       await refreshPoses(nextMesh, cameraForPoses);
     } catch (error) {
@@ -127,7 +129,16 @@ export default function App() {
     } finally {
       setLoadingMesh(false);
     }
-  }, [config.camera, objectPathInput, refreshPoses]);
+  }, [config.camera, config.object.up_axis, objectPathInput, refreshPoses]);
+
+  const handleObjectUpAxisChange = useCallback((up_axis: SourceUpAxis) => {
+    setConfig((current) => ({
+      ...current,
+      object: { ...current.object, up_axis },
+    }));
+    setMesh(null);
+    setPoses(null);
+  }, []);
 
   const handleCameraChange = useCallback(
     (camera: CameraConfig) => {
@@ -179,6 +190,7 @@ export default function App() {
             meshError={meshError}
             posesError={posesError}
             onObjectPathInputChange={setObjectPathInput}
+            onObjectUpAxisChange={handleObjectUpAxisChange}
             onLoadMesh={() => void handleLoadMesh()}
             onCameraChange={handleCameraChange}
             onShowCamerasChange={setShowCameras}

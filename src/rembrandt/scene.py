@@ -14,7 +14,7 @@ from rembrandt.camera.orientation import (
     require_nonzero_direction,
     rotation_euler_from_forward,
 )
-from rembrandt.convention import OBJ_IMPORT_FORWARD_AXIS, OBJ_IMPORT_UP_AXIS
+from rembrandt.convention import SourceUpAxis, obj_import_axes
 from rembrandt.errors import ModelFileNotFoundError
 
 _CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
@@ -58,11 +58,12 @@ class Scene:
         self._camera_look_at = None
         self._camera_fit_target = False
 
-    def load_object(self, obj_path: str | Path) -> bpy.types.Object:
+    def load_object(self, obj_path: str | Path, *, up_axis: SourceUpAxis = "Y") -> bpy.types.Object:
         """Load an .obj file as the target object for rendering.
 
         Args:
             obj_path: Path to the .obj file.
+            up_axis: Native up-axis of the source OBJ.
 
         Returns:
             The imported mesh object.
@@ -75,11 +76,13 @@ class Scene:
         if not path.exists():
             raise ModelFileNotFoundError(str(path))
 
+        forward_axis, import_up_axis = obj_import_axes(up_axis)
+
         # Blender 4.x: bpy.ops.wm.obj_import (replaces import_scene.obj).
         bpy.ops.wm.obj_import(
             filepath=str(path),
-            forward_axis=OBJ_IMPORT_FORWARD_AXIS,
-            up_axis=OBJ_IMPORT_UP_AXIS,
+            forward_axis=forward_axis,
+            up_axis=import_up_axis,
         )
 
         imported = [o for o in bpy.context.selected_objects if o.type == "MESH"]

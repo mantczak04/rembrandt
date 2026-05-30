@@ -1,4 +1,9 @@
-import type { CameraConfig, RembrandtConfig, SamplingStrategy } from "../types";
+import type {
+  CameraConfig,
+  RembrandtConfig,
+  SamplingStrategy,
+  SourceUpAxis,
+} from "../types";
 import RangeInput from "./RangeInput";
 import styles from "./Controls.module.css";
 
@@ -19,6 +24,7 @@ export type ControlsProps = {
   meshError: string | null;
   posesError: string | null;
   onObjectPathInputChange: (path: string) => void;
+  onObjectUpAxisChange: (upAxis: SourceUpAxis) => void;
   onLoadMesh: () => void;
   onCameraChange: (camera: CameraConfig) => void;
   onShowCamerasChange: (value: boolean) => void;
@@ -35,6 +41,7 @@ export default function Controls({
   meshError,
   posesError,
   onObjectPathInputChange,
+  onObjectUpAxisChange,
   onLoadMesh,
   onCameraChange,
   onShowCamerasChange,
@@ -70,6 +77,20 @@ export default function Controls({
           {loadingMesh ? "Loading…" : "Load mesh"}
         </button>
         {meshError ? <p className={styles.error}>{meshError}</p> : null}
+      </div>
+      <div className={styles.row}>
+        <label className={styles.label} htmlFor="object-up-axis">
+          Source up axis
+        </label>
+        <select
+          id="object-up-axis"
+          className={styles.select}
+          value={config.object.up_axis ?? "Y"}
+          onChange={(event) => onObjectUpAxisChange(event.target.value as SourceUpAxis)}
+        >
+          <option value="Y">Y-up OBJ</option>
+          <option value="Z">Z-up OBJ</option>
+        </select>
       </div>
 
       <h2 className={styles.sectionTitle}>Camera sampling</h2>

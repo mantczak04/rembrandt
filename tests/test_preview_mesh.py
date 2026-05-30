@@ -9,11 +9,11 @@ import pytest
 
 from rembrandt.errors import ModelFileNotFoundError
 from rembrandt.preview.mesh import PreviewMesh, load_preview_mesh
-from tests.test_paths import sample_object_path
+from tests.test_paths import sample_object_path, sample_object_up_axis
 
 
 def test_load_preview_mesh_parses_sample() -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
 
     assert isinstance(mesh, PreviewMesh)
     assert len(mesh.positions) > 0
@@ -25,7 +25,7 @@ def test_load_preview_mesh_parses_sample() -> None:
 
 
 def test_load_preview_mesh_bbox_centered_at_origin() -> None:
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     bbox_min = np.asarray(mesh.bbox[0], dtype=np.float64)
     bbox_max = np.asarray(mesh.bbox[1], dtype=np.float64)
     np.testing.assert_allclose((bbox_min + bbox_max) / 2.0, 0.0, atol=1e-5)
@@ -35,9 +35,12 @@ def test_load_preview_mesh_positions_match_orient_and_center() -> None:
     from rembrandt.convention import orient_and_center
 
     raw_vertices = _parse_obj_vertices(sample_object_path())
-    expected, _bbox = orient_and_center(np.asarray(raw_vertices, dtype=np.float64))
+    expected, _bbox = orient_and_center(
+        np.asarray(raw_vertices, dtype=np.float64),
+        up_axis=sample_object_up_axis(),
+    )
 
-    mesh = load_preview_mesh(sample_object_path())
+    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
     positions = np.asarray(mesh.positions, dtype=np.float64).reshape(-1, 3)
     np.testing.assert_allclose(positions, expected, atol=1e-5)
 
