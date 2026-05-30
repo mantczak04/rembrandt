@@ -36,7 +36,7 @@ export async function fetchHealth(): Promise<HealthResponse> {
 
 export async function fetchMesh(
   path: string,
-  upAxis: SourceUpAxis = "Y",
+  upAxis: SourceUpAxis = "Z",
 ): Promise<PreviewMesh> {
   return postJson<PreviewMesh>("/preview/mesh", { path, up_axis: upAxis });
 }

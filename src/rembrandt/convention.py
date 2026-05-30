@@ -55,13 +55,13 @@ SOURCE_ORIENTATIONS: dict[SourceUpAxis, SourceOrientation] = {
     ),
 }
 
-# Default values for bpy.ops.wm.obj_import (Blender 4.x). Kept for callers/tests
-# that only care about the default Y-up convention.
-OBJ_IMPORT_FORWARD_AXIS = SOURCE_ORIENTATIONS["Y"].forward_axis
-OBJ_IMPORT_UP_AXIS = SOURCE_ORIENTATIONS["Y"].up_axis
+# Default values for bpy.ops.wm.obj_import (Blender 4.x). Z-up is the default
+# source convention; pass ``up_axis="Y"`` for legacy Y-up assets.
+OBJ_IMPORT_FORWARD_AXIS = SOURCE_ORIENTATIONS["Z"].forward_axis
+OBJ_IMPORT_UP_AXIS = SOURCE_ORIENTATIONS["Z"].up_axis
 
 
-def obj_import_axes(up_axis: SourceUpAxis = "Y") -> tuple[BlenderImportAxis, SourceUpAxis]:
+def obj_import_axes(up_axis: SourceUpAxis = "Z") -> tuple[BlenderImportAxis, SourceUpAxis]:
     """Return Blender ``obj_import`` axes for a declared source up-axis.
 
     Args:
@@ -77,7 +77,7 @@ def obj_import_axes(up_axis: SourceUpAxis = "Y") -> tuple[BlenderImportAxis, Sou
 def orient_and_center(
     vertices: npt.ArrayLike,
     *,
-    up_axis: SourceUpAxis = "Y",
+    up_axis: SourceUpAxis = "Z",
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Rotate source OBJ vertices to Z-up and center on the axis-aligned bbox.
 

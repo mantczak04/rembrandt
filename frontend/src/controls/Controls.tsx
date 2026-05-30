@@ -85,7 +85,7 @@ export default function Controls({
         <select
           id="object-up-axis"
           className={styles.select}
-          value={config.object.up_axis ?? "Y"}
+          value={config.object.up_axis ?? "Z"}
           onChange={(event) => onObjectUpAxisChange(event.target.value as SourceUpAxis)}
         >
           <option value="Y">Y-up OBJ</option>

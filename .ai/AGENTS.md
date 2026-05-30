@@ -44,8 +44,8 @@ violated, but treat them as design constraints, not just test targets.
    an endpoint.
 3. **One orientation/centering convention, defined once.** `convention.py` holds both the
    `bpy.ops.wm.obj_import` axes and the pure-Python `orient_and_center()` mapping used by
-   the preview. Source OBJ up-axis is explicit (`object.up_axis`, default `Y`, optional
-   `Z`) and both paths must derive from that declaration — they must not drift.
+   the preview. Source OBJ up-axis is explicit (`object.up_axis`, default `Z`, optional
+   `Y`) and both paths must derive from that declaration — they must not drift.
    `test_orient_and_center_matches_bpy_import` (bpy-marked) is the parity check.
 4. **+Z is world up; cameras/lights use -Z forward, Y up.** Elevation is measured from the
    XY plane (`z = distance * sin(elevation)`). Objects are oriented from their declared

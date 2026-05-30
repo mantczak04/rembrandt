@@ -26,7 +26,7 @@ class PreviewMeshRequest(BaseModel):
     """Request body for mesh preview."""
 
     path: str
-    up_axis: SourceUpAxis = "Y"
+    up_axis: SourceUpAxis = "Z"
 
 
 class PreviewMeshResponse(BaseModel):

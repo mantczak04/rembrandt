@@ -1,17 +1,18 @@
 object:
   path: /home/macko/projects/rembrandt/test-obj/chess.obj
+  up_axis: Z
 camera:
-  n: 50
+  n: 30
   azimuth_range:
   - 180.0
   - 360.0
   elevation_range:
-  - -90.0
+  - 0.0
   - 90.0
   distance_range:
   - 7.0
   - 13.0
-  strategy: random
+  strategy: fibonacci
   seed: 42
   look_at:
   - 0.0

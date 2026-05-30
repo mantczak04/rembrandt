@@ -47,8 +47,9 @@ def _sort_vertices(vertices: np.ndarray) -> np.ndarray:
 
 
 def test_obj_import_axis_constants() -> None:
-    assert OBJ_IMPORT_FORWARD_AXIS == "NEGATIVE_Z"
-    assert OBJ_IMPORT_UP_AXIS == "Y"
+    assert OBJ_IMPORT_FORWARD_AXIS == "Y"
+    assert OBJ_IMPORT_UP_AXIS == "Z"
+    assert obj_import_axes() == ("Y", "Z")
     assert obj_import_axes("Y") == ("NEGATIVE_Z", "Y")
     assert obj_import_axes("Z") == ("Y", "Z")
 
@@ -65,7 +66,7 @@ def test_orient_and_center_raises_on_bad_shape() -> None:
 
 def test_orient_and_center_maps_y_up_to_z_up() -> None:
     vertices = np.array([[0.0, 0.0, 0.0], [0.0, 2.0, 0.0]], dtype=np.float64)
-    centered, bbox = orient_and_center(vertices)
+    centered, bbox = orient_and_center(vertices, up_axis="Y")
     assert bbox[1, 2] - bbox[0, 2] == pytest.approx(2.0)
     assert bbox[0, 1] == pytest.approx(bbox[1, 1])
     np.testing.assert_allclose(centered[:, 2], [-1.0, 1.0], atol=1e-12)
@@ -73,7 +74,7 @@ def test_orient_and_center_maps_y_up_to_z_up() -> None:
 
 def test_orient_and_center_preserves_z_up() -> None:
     vertices = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.0]], dtype=np.float64)
-    centered, bbox = orient_and_center(vertices, up_axis="Z")
+    centered, bbox = orient_and_center(vertices)
     assert bbox[1, 2] - bbox[0, 2] == pytest.approx(2.0)
     assert bbox[0, 1] == pytest.approx(bbox[1, 1])
     np.testing.assert_allclose(centered[:, 2], [-1.0, 1.0], atol=1e-12)

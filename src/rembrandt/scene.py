@@ -58,7 +58,7 @@ class Scene:
         self._camera_look_at = None
         self._camera_fit_target = False
 
-    def load_object(self, obj_path: str | Path, *, up_axis: SourceUpAxis = "Y") -> bpy.types.Object:
+    def load_object(self, obj_path: str | Path, *, up_axis: SourceUpAxis = "Z") -> bpy.types.Object:
         """Load an .obj file as the target object for rendering.
 
         Args:

@@ -104,7 +104,7 @@ export default function App() {
       return;
     }
 
-    const upAxis = config.object.up_axis ?? "Y";
+    const upAxis = config.object.up_axis ?? "Z";
     setLoadingMesh(true);
     setMeshError(null);
     setPoses(null);

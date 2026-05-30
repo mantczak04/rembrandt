@@ -72,8 +72,8 @@ The SPA writes the same YAML schema that `rembrandt-render` consumes:
 ```yaml
 object:
   path: /absolute/path/to/model.obj
-  # Native OBJ up-axis. Defaults to Y for legacy assets; set Z for Z-up models.
-  up_axis: Y
+  # Native OBJ up-axis. Defaults to Z; set Y for legacy Y-up models.
+  up_axis: Z
 camera:
   n: 10
   azimuth_range: [0.0, 360.0]

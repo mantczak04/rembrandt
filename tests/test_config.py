@@ -83,7 +83,7 @@ def test_config_round_trip_full_fields(tmp_path: Path) -> None:
 def test_config_defaults_applied() -> None:
     cfg = _minimal_config()
 
-    assert cfg.object.up_axis == "Y"
+    assert cfg.object.up_axis == "Z"
     assert cfg.camera.azimuth_range == (0.0, 360.0)
     assert cfg.camera.elevation_range == (-10.0, 30.0)
     assert cfg.camera.distance_range == (3.0, 5.0)

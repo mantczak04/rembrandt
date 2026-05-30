@@ -27,7 +27,7 @@ class PreviewMesh:
     bbox: list[list[float]]
 
 
-def load_preview_mesh(path: str | Path, *, up_axis: SourceUpAxis = "Y") -> PreviewMesh:
+def load_preview_mesh(path: str | Path, *, up_axis: SourceUpAxis = "Z") -> PreviewMesh:
     """Load an ``.obj`` file, orient it to the canonical frame, and return preview geometry.
 
     Args:

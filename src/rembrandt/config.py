@@ -19,7 +19,7 @@ class ObjectConfig(BaseModel):
     """Input object for rendering."""
 
     path: str
-    up_axis: SourceUpAxis = "Y"
+    up_axis: SourceUpAxis = "Z"
 
 
 class CameraConfig(BaseModel):
