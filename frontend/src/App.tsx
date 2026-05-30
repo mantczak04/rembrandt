@@ -142,8 +142,7 @@ export default function App() {
   return (
     <div className={styles.layout}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>Rembrandt</p>
-        <h1 className={styles.title}>Camera pose configurator</h1>
+        <h1 className={styles.eyebrow}>Rembrandt</h1>
         <p className={styles.subtitle}>
           Tune camera-sphere coverage on your object, then save a YAML config for{" "}
           <code>rembrandt-render</code>.
@@ -169,24 +168,28 @@ export default function App() {
             showRays={showRays}
           />
         </div>
-        <Controls
-          config={config}
-          objectPathInput={objectPathInput}
-          showCameras={showCameras}
-          showRays={showRays}
-          loadingMesh={loadingMesh}
-          loadingPoses={loadingPoses}
-          meshError={meshError}
-          posesError={posesError}
-          onObjectPathInputChange={setObjectPathInput}
-          onLoadMesh={() => void handleLoadMesh()}
-          onCameraChange={handleCameraChange}
-          onShowCamerasChange={setShowCameras}
-          onShowRaysChange={setShowRays}
-        />
+        <div className={styles.controlsPane}>
+          <Controls
+            config={config}
+            objectPathInput={objectPathInput}
+            showCameras={showCameras}
+            showRays={showRays}
+            loadingMesh={loadingMesh}
+            loadingPoses={loadingPoses}
+            meshError={meshError}
+            posesError={posesError}
+            onObjectPathInputChange={setObjectPathInput}
+            onLoadMesh={() => void handleLoadMesh()}
+            onCameraChange={handleCameraChange}
+            onShowCamerasChange={setShowCameras}
+            onShowRaysChange={setShowRays}
+          />
+        </div>
       </div>
 
-      <SaveBar config={config} disabled={mesh === null} />
+      <div className={styles.savePane}>
+        <SaveBar config={config} disabled={mesh === null} />
+      </div>
     </div>
   );
 }
