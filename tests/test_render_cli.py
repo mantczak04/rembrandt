@@ -10,17 +10,16 @@ import pytest
 
 from rembrandt.config import RembrandtConfig, dump_config, load_config
 from rembrandt.render import render, render_from_config, resolve_object_path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHESS_BOARD_OBJ = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
-SAMPLE_OBJECT_PATH = "test-obj/12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import PROJECT_ROOT, sample_object_path
 
 
 def test_resolve_object_path_relative_to_project_root() -> None:
-    config_path = PROJECT_ROOT / "configs" / "sample.yaml"
-    resolved = resolve_object_path(config_path, SAMPLE_OBJECT_PATH)
+    obj_path = sample_object_path()
+    relative = obj_path.relative_to(PROJECT_ROOT)
+    config_path = PROJECT_ROOT / "configs" / "dataset.yaml"
+    resolved = resolve_object_path(config_path, str(relative))
 
-    assert resolved == CHESS_BOARD_OBJ.resolve()
+    assert resolved == obj_path.resolve()
 
 
 def test_resolve_object_path_relative_to_config_directory(tmp_path: Path) -> None:
@@ -35,7 +34,7 @@ def test_resolve_object_path_relative_to_config_directory(tmp_path: Path) -> Non
 def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     config_path = tmp_path / "render.yaml"
     cfg = RembrandtConfig(
-        object={"path": str(CHESS_BOARD_OBJ)},
+        object={"path": str(sample_object_path())},
         camera={"n": 3, "seed": 1},
         lights=[
             {
@@ -61,7 +60,7 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     )
 
     assert output_dir == tmp_path / "frames" / "test-run"
-    scene.load_object.assert_called_once_with(CHESS_BOARD_OBJ.resolve())
+    scene.load_object.assert_called_once_with(sample_object_path().resolve())
     scene.center_target.assert_called_once()
     assert scene.add_light.call_count == 1
     scene.add_camera.assert_called_once_with(focal_length=35.0)
@@ -81,7 +80,7 @@ def test_render_loads_config_and_delegates(
 ) -> None:
     config_path = tmp_path / "render.yaml"
     cfg = RembrandtConfig(
-        object={"path": str(CHESS_BOARD_OBJ)},
+        object={"path": str(sample_object_path())},
         camera={"n": 1, "seed": 0},
         output={"dir": str(tmp_path / "out")},
     )
@@ -113,10 +112,19 @@ def test_render_smoke_writes_frames(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     pytest.importorskip("bpy")
     monkeypatch.chdir(PROJECT_ROOT)
 
+    obj_path = sample_object_path()
+    if not obj_path.is_file():
+        pytest.skip(f"sample object not found: {obj_path}")
+
     config_path = tmp_path / "smoke.yaml"
     output_root = tmp_path / "rendered"
+    object_path = (
+        str(obj_path.relative_to(PROJECT_ROOT))
+        if obj_path.is_relative_to(PROJECT_ROOT)
+        else str(obj_path)
+    )
     cfg = RembrandtConfig(
-        object={"path": SAMPLE_OBJECT_PATH},
+        object={"path": object_path},
         camera={"n": 2, "seed": 0},
         render={"resolution": (64, 64), "samples": 1},
         output={"dir": str(output_root)},

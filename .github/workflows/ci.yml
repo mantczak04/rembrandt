@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-pure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies (no bpy)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint and typecheck
+        run: |
+          ruff check
+          ruff format --check
+          mypy --no-sqlite-cache src
+
+      - name: Run bpy-free tests
+        run: pytest -m "not bpy" -q
+
+  test-bpy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache bpy wheel
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: bpy-4.5-py311-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            bpy-4.5-py311-${{ runner.os }}-
+
+      - name: Install with bpy
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run bpy-marked tests
+        run: pytest -m bpy --require-bpy -q

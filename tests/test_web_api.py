@@ -11,10 +11,7 @@ from fastapi.testclient import TestClient
 from rembrandt.config import RembrandtConfig, load_config
 from rembrandt.preview.mesh import load_preview_mesh
 from rembrandt.web.app import create_app
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHESS_BOARD_OBJ = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
-SAMPLE_OBJECT_PATH = "test-obj/12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import SAMPLE_OBJECT_PATH, sample_object_path
 
 
 @pytest.fixture
@@ -25,7 +22,7 @@ def client() -> TestClient:
 def test_preview_mesh_returns_geometry(client: TestClient) -> None:
     response = client.post(
         "/api/preview/mesh",
-        json={"path": str(CHESS_BOARD_OBJ)},
+        json={"path": str(sample_object_path())},
     )
 
     assert response.status_code == 200
@@ -46,7 +43,7 @@ def test_preview_mesh_missing_path_returns_404(client: TestClient) -> None:
 
 
 def test_preview_poses_returns_n_camera_points(client: TestClient) -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     response = client.post(
         "/api/preview/poses",
         json={
@@ -69,7 +66,7 @@ def test_preview_poses_returns_n_camera_points(client: TestClient) -> None:
 
 
 def test_preview_poses_invalid_camera_params_returns_400(client: TestClient) -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     response = client.post(
         "/api/preview/poses",
         json={

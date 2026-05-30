@@ -79,12 +79,18 @@ rembrandt-render ./configs/dataset.yaml        # writes <output.dir>/<timestamp>
 ### Checks before considering work done
 
 ```bash
-pytest -q
+pytest -m "not bpy" -q          # fast bpy-free lane (default local iteration)
+pytest -m bpy --require-bpy -q  # orientation parity + render smoke (needs bpy)
 ruff check src tests
 ruff format --check src tests
 mypy --no-sqlite-cache src
 cd frontend && yarn typecheck && yarn build
 ```
+
+CI runs both lanes (see `.github/workflows/ci.yml`). The bpy job passes
+`--require-bpy` so parity tests cannot pass-by-skipping when Blender is expected.
+Committed orientation fixtures live in `tests/fixtures/`; optional full `.obj` files
+may also be placed in `test-obj/` (gitignored).
 
 All of these must be clean. `ruff` is configured with line-length 100 and rule sets
 `E,W,F,I,B,UP,N`; `mypy` runs in **strict** mode (`ignore_missing_imports = true` because
@@ -139,9 +145,12 @@ exist yet — that tree describes the intended layout, not the current one.
 
 ## Testing notes
 
-- Pure-module tests run without bpy and are the fast majority.
+- Pure-module tests run without bpy and are the fast majority (`pytest -m "not bpy"`).
 - Tests that need the Blender runtime are marked `@pytest.mark.bpy` and/or use
   `pytest.importorskip("bpy")`, so they skip cleanly in a bpy-less environment.
+- The bpy CI lane runs `pytest -m bpy --require-bpy` so missing bpy is a hard failure.
+  Key guards: `test_orient_and_center_matches_bpy_import`,
+  `test_preview_mesh_matches_scene_geometry` (see `tests/test_orientation_parity.py`).
 - The bpy-free guarantee is enforced by source-scanning tests (e.g.
   `test_web_api_module_is_bpy_free`). If you add a bpy import to a forbidden module, that
   test — not a runtime crash — is what catches it.

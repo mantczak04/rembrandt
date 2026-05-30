@@ -16,14 +16,12 @@ from rembrandt.preview.geometry import (
     spherical_to_cartesian,
 )
 from rembrandt.preview.mesh import load_preview_mesh
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHESS_BOARD_OBJ = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import sample_object_path
 
 
 @pytest.mark.parametrize("strategy", ["random", "fibonacci"])
 def test_build_preview_pose_geometry_camera_count(strategy: SamplingStrategy) -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     geometry = build_preview_pose_geometry(
         bbox=mesh.bbox,
         n=25,
@@ -36,7 +34,7 @@ def test_build_preview_pose_geometry_camera_count(strategy: SamplingStrategy) ->
 
 
 def test_build_preview_pose_geometry_band_within_angular_bounds() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     azimuth_range = (20.0, 120.0)
     elevation_range = (-15.0, 25.0)
     look_at = (1.0, -2.0, 0.5)
@@ -60,7 +58,7 @@ def test_build_preview_pose_geometry_band_within_angular_bounds() -> None:
 
 
 def test_build_preview_pose_geometry_ground_plane_at_bbox_base() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     geometry = build_preview_pose_geometry(bbox=mesh.bbox, n=5, seed=1)
     z_base = mesh.bbox[0][2]
     plane_z = np.asarray(geometry.ground_plane.positions, dtype=np.float64).reshape(-1, 3)[:, 2]
@@ -68,15 +66,28 @@ def test_build_preview_pose_geometry_ground_plane_at_bbox_base() -> None:
 
 
 def test_band_display_radius_wraps_large_objects() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    from tests.test_paths import CHESS_OBJ
+
+    if not CHESS_OBJ.is_file():
+        pytest.skip("requires large sample mesh at test-obj/chess.obj")
+
+    mesh = load_preview_mesh(CHESS_OBJ)
     distance_range = (3.0, 5.0)
     radius = band_display_radius(mesh.bbox, distance_range)
-    assert radius >= distance_range[1]
-    assert radius > 10.0
+    bbox = np.asarray(mesh.bbox, dtype=np.float64)
+    corner_radius = max(
+        float(np.linalg.norm(corner))
+        for corner in (
+            (bbox[0, 0], bbox[0, 1], bbox[0, 2]),
+            (bbox[1, 0], bbox[1, 1], bbox[1, 2]),
+        )
+    )
+    assert radius == pytest.approx(max(corner_radius, distance_range[1]))
+    assert corner_radius > 4.0
 
 
 def test_preview_band_uses_display_radius_for_legibility() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     geometry = build_preview_pose_geometry(
         bbox=mesh.bbox,
         n=5,

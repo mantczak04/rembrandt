@@ -9,13 +9,11 @@ import pytest
 
 from rembrandt.errors import ModelFileNotFoundError
 from rembrandt.preview.mesh import PreviewMesh, load_preview_mesh
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHESS_BOARD_OBJ = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import sample_object_path
 
 
 def test_load_preview_mesh_parses_sample() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
 
     assert isinstance(mesh, PreviewMesh)
     assert len(mesh.positions) > 0
@@ -27,7 +25,7 @@ def test_load_preview_mesh_parses_sample() -> None:
 
 
 def test_load_preview_mesh_bbox_centered_at_origin() -> None:
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     bbox_min = np.asarray(mesh.bbox[0], dtype=np.float64)
     bbox_max = np.asarray(mesh.bbox[1], dtype=np.float64)
     np.testing.assert_allclose((bbox_min + bbox_max) / 2.0, 0.0, atol=1e-5)
@@ -36,10 +34,10 @@ def test_load_preview_mesh_bbox_centered_at_origin() -> None:
 def test_load_preview_mesh_positions_match_orient_and_center() -> None:
     from rembrandt.convention import orient_and_center
 
-    raw_vertices = _parse_obj_vertices(CHESS_BOARD_OBJ)
+    raw_vertices = _parse_obj_vertices(sample_object_path())
     expected, _bbox = orient_and_center(np.asarray(raw_vertices, dtype=np.float64))
 
-    mesh = load_preview_mesh(CHESS_BOARD_OBJ)
+    mesh = load_preview_mesh(sample_object_path())
     positions = np.asarray(mesh.positions, dtype=np.float64).reshape(-1, 3)
     np.testing.assert_allclose(positions, expected, atol=1e-5)
 

@@ -120,6 +120,25 @@ mypy --no-sqlite-cache src
 cd frontend && yarn typecheck && yarn build
 ```
 
+### Tests (two lanes)
+
+Most tests are **bpy-free** and run with the dev install above:
+
+```bash
+pytest -m "not bpy" -q
+```
+
+Orientation parity (`orient_and_center` vs `bpy.ops.wm.obj_import`, preview mesh vs
+scene geometry) lives in bpy-marked tests. Run them locally when Blender is installed:
+
+```bash
+pytest -m bpy -q
+```
+
+CI runs both lanes; the bpy job uses `pytest -m bpy --require-bpy` so a missing Blender
+runtime fails loudly instead of skipping. Optional full-size sample assets live under
+`test-obj/` (gitignored); committed fixtures under `tests/fixtures/` cover parity in CI.
+
 The old Streamlit / Plotly camera-pose preview has been retired. The React + Three.js SPA is now the only preview UI.
 
 Copyright @conchiglia 2026

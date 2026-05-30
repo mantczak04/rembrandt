@@ -12,9 +12,7 @@ from rembrandt.convention import (
     OBJ_IMPORT_UP_AXIS,
     orient_and_center,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CHESS_BOARD_OBJ = PROJECT_ROOT / "test-obj" / "12951_Stone_Chess_Board_v1_L3.obj"
+from tests.test_paths import chess_board_object_path, sample_object_path
 
 
 def _parse_obj_vertices(path: Path) -> np.ndarray:
@@ -88,10 +86,11 @@ def test_orient_and_center_matches_bpy_import() -> None:
 
     from rembrandt.scene import Scene
 
-    raw_vertices = _parse_obj_vertices(CHESS_BOARD_OBJ)
+    obj_path = sample_object_path()
+    raw_vertices = _parse_obj_vertices(obj_path)
 
     scene = Scene()
-    scene.load_object(CHESS_BOARD_OBJ)
+    scene.load_object(obj_path)
     scene.center_target()
     assert scene.target is not None
     bpy_vertices = np.array(
@@ -105,7 +104,7 @@ def test_orient_and_center_matches_bpy_import() -> None:
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
     bpy.ops.wm.obj_import(
-        filepath=str(CHESS_BOARD_OBJ),
+        filepath=str(obj_path),
         forward_axis=OBJ_IMPORT_FORWARD_AXIS,
         up_axis=OBJ_IMPORT_UP_AXIS,
     )
@@ -118,3 +117,31 @@ def test_orient_and_center_matches_bpy_import() -> None:
         dtype=np.float64,
     )
     _assert_vertex_sets_allclose(pure_vertices, direct_vertices)
+
+
+@pytest.mark.bpy
+def test_orient_and_center_matches_bpy_import_on_chess_board_object() -> None:
+    """Parity on the asset named in the original orientation bug report."""
+    pytest.importorskip("bpy")
+    from rembrandt.scene import Scene
+
+    obj_path = chess_board_object_path()
+    if not obj_path.is_file():
+        pytest.skip(
+            f"reported drift asset not found at {obj_path}; "
+            "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
+        )
+
+    raw_vertices = _parse_obj_vertices(obj_path)
+
+    scene = Scene()
+    scene.load_object(obj_path)
+    scene.center_target()
+    assert scene.target is not None
+    bpy_vertices = np.array(
+        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
+        dtype=np.float64,
+    )
+
+    pure_vertices, _bbox = orient_and_center(raw_vertices)
+    _assert_vertex_sets_allclose(pure_vertices, bpy_vertices)
