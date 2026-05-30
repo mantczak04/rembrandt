@@ -24,3 +24,11 @@ frontend/node_modules/
 
 #test directories
 test-obj/
+
+#pyenv
+.python-version
+
+#ai - only .ai directory is supported in this project
+.agents
+.codex
+.claude
