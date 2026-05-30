@@ -16,6 +16,7 @@ from rembrandt.camera.orientation import (
 )
 from rembrandt.convention import SourceUpAxis, obj_import_axes
 from rembrandt.errors import ModelFileNotFoundError
+from rembrandt.obj_assets import normalize_obj_mtllibs, resolve_texture_file
 
 _CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
 _LIGHT_LOOK_AT_ERROR = "Light location and look_at cannot be the same point."
@@ -72,18 +73,23 @@ class Scene:
             ModelFileNotFoundError: If the file does not exist.
             RuntimeError: If the .obj contains no mesh objects.
         """
-        path = Path(obj_path)
+        path = Path(obj_path).resolve()
         if not path.exists():
             raise ModelFileNotFoundError(str(path))
+
+        asset_dir = path.parent
+        normalize_obj_mtllibs(path)
 
         forward_axis, import_up_axis = obj_import_axes(up_axis)
 
         # Blender 4.x: bpy.ops.wm.obj_import (replaces import_scene.obj).
         bpy.ops.wm.obj_import(
             filepath=str(path),
+            directory=str(asset_dir),
             forward_axis=forward_axis,
             up_axis=import_up_axis,
         )
+        self._reload_missing_textures(asset_dir)
 
         imported = [o for o in bpy.context.selected_objects if o.type == "MESH"]
         if not imported:
@@ -93,6 +99,30 @@ class Scene:
         # Multi-mesh handling can come later if a real .obj forces the issue.
         self.target = imported[0]
         return self.target
+
+    @staticmethod
+    def _image_has_pixels(image: bpy.types.Image) -> bool:
+        """Return whether an image has loadable pixel data."""
+        return image.size[0] > 0 and len(image.pixels) > 0
+
+    def _reload_missing_textures(self, asset_dir: Path) -> None:
+        """Reload image textures that Blender could not resolve during OBJ import."""
+        for image in bpy.data.images:
+            if image.packed_file is not None or self._image_has_pixels(image):
+                continue
+
+            filename = Path(bpy.path.basename(image.filepath)).name
+            if not filename:
+                continue
+
+            resolved = resolve_texture_file(asset_dir, filename)
+            if resolved is None:
+                continue
+
+            image.filepath = str(resolved)
+            image.reload()
+
+        bpy.ops.file.find_missing_files(directory=str(asset_dir))
 
     def add_camera(
         self,

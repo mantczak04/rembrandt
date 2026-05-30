@@ -1,0 +1,1 @@
+When trying to load .obj, we always get a WARNING that mtl textures cannot get loaded. In result, every 3D model is just a solid color when rendered. Investigate, test and fix.
