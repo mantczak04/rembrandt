@@ -1,0 +1,60 @@
+object:
+  path: /home/macko/projects/rembrandt/test-obj/chess.obj
+camera:
+  n: 100
+  azimuth_range:
+  - 180.0
+  - 360.0
+  elevation_range:
+  - -90.0
+  - 90.0
+  distance_range:
+  - 7.0
+  - 13.0
+  strategy: random
+  seed: 42
+  look_at:
+  - 0.0
+  - 0.0
+  - 0.0
+lights:
+- light_type: SUN
+  location:
+  - 2.0
+  - -3.0
+  - 5.0
+  look_at:
+  - 0.0
+  - 0.0
+  - 0.0
+  energy: 3.0
+  color:
+  - 1.0
+  - 1.0
+  - 1.0
+  size: 1.0
+- light_type: POINT
+  location:
+  - -2.0
+  - 2.0
+  - 3.0
+  look_at:
+  - 1.0
+  - 1.0
+  - 1.0
+  energy: null
+  color:
+  - 1.0
+  - 1.0
+  - 1.0
+  size: 1.0
+render:
+  focal_length: 50.0
+  resolution:
+  - 640
+  - 640
+  engine: EEVEE
+  samples: 32
+output:
+  dir: output
+  train_val_split: 0.8

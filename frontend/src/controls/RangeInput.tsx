@@ -1,3 +1,4 @@
+import { useState } from "react";
 import styles from "./Controls.module.css";
 
 export type RangeInputProps = {
@@ -20,6 +21,11 @@ export default function RangeInput({
   onChange,
 }: RangeInputProps) {
   const [low, high] = value;
+  const [activeThumb, setActiveThumb] = useState<"min" | "max" | null>(null);
+
+  const span = max - min;
+  const lowPercent = span === 0 ? 0 : ((low - min) / span) * 100;
+  const highPercent = span === 0 ? 100 : ((high - min) / span) * 100;
 
   const updateLow = (next: number) => {
     onChange([clamp(next, min, high), high]);
@@ -29,36 +35,62 @@ export default function RangeInput({
     onChange([low, clamp(next, low, max)]);
   };
 
+  const formatValue = (n: number) =>
+    step >= 1 ? String(Math.round(n)) : n.toFixed(1);
+
   return (
     <fieldset className={styles.fieldset}>
       <legend className={styles.legend}>{label}</legend>
-      <div className={styles.rangeRow}>
-        <label className={styles.label} htmlFor={`${id}-min`}>
-          Min
-        </label>
+      <div className={styles.rangeSlider}>
+        <div className={styles.rangeTrack} aria-hidden="true">
+          <div
+            className={styles.rangeFill}
+            style={{
+              left: `${lowPercent}%`,
+              width: `${highPercent - lowPercent}%`,
+            }}
+          />
+        </div>
         <input
           id={`${id}-min`}
-          className={styles.input}
-          type="number"
+          className={styles.rangeThumb}
+          type="range"
           min={min}
           max={max}
           step={step}
           value={low}
+          aria-label={`${label} minimum`}
+          style={{ zIndex: activeThumb === "min" ? 3 : 2 }}
+          onPointerDown={() => setActiveThumb("min")}
+          onPointerUp={() => setActiveThumb(null)}
+          onBlur={() => setActiveThumb(null)}
           onChange={(event) => updateLow(Number(event.target.value))}
         />
-        <label className={styles.label} htmlFor={`${id}-max`}>
-          Max
-        </label>
         <input
           id={`${id}-max`}
-          className={styles.input}
-          type="number"
+          className={styles.rangeThumb}
+          type="range"
           min={min}
           max={max}
           step={step}
           value={high}
+          aria-label={`${label} maximum`}
+          style={{ zIndex: activeThumb === "max" ? 3 : 1 }}
+          onPointerDown={() => setActiveThumb("max")}
+          onPointerUp={() => setActiveThumb(null)}
+          onBlur={() => setActiveThumb(null)}
           onChange={(event) => updateHigh(Number(event.target.value))}
         />
+      </div>
+      <div className={styles.rangeValues} aria-live="polite">
+        <span className={styles.rangeValue}>
+          <span className={styles.rangeValueLabel}>Min</span>
+          {formatValue(low)}
+        </span>
+        <span className={styles.rangeValue}>
+          <span className={styles.rangeValueLabel}>Max</span>
+          {formatValue(high)}
+        </span>
       </div>
     </fieldset>
   );
