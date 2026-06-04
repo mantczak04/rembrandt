@@ -97,9 +97,34 @@ render:
 output:
   dir: output
   train_val_split: 0.8
+# Optional: randomized photo backgrounds (default mode is none)
+# background:
+#   mode: image
+#   image_dir: ./backgrounds
+#   seed: 7
 ```
 
 `train_val_split` is reserved for the future dataset writer and is not consumed by the current frame renderer.
+
+### Randomized backgrounds
+
+When `background.mode` is `image`, Rembrandt renders each frame with a transparent film (RGBA), then alpha-composites the object over a randomly chosen photo from `background.image_dir`. The foreground pixels are never moved or scaled — only the background is resized/cropped to cover the frame. Set `background.seed` for a reproducible background sequence per run (`null` means non-reproducible). This seed is independent of `camera.seed`.
+
+Recommended workflow using [BG-20k](https://huggingface.co/datasets/unography/BG-20k-1200px) (20k high-resolution photos without salient objects, MIT license):
+
+```bash
+pip install -e ".[backgrounds]"
+rembrandt-fetch-backgrounds --out ./backgrounds --count 2000
+# then in your config:
+#   background:
+#     mode: image
+#     image_dir: ./backgrounds
+#     seed: 7
+```
+
+BG-20k was built for compositing: backgrounds contain no salient objects, so rendered object classes cannot appear unlabeled in a background once YOLO labels exist. If you redistribute a dataset built with these backgrounds, cite *Bridging Composite and Real: Towards End-to-End Deep Image Matting* (IJCV 2021).
+
+Any local directory of `.jpg`/`.jpeg`/`.png`/`.webp` images works — the fetch command is optional. If you use **Open Images** instead, download a bounded subset (for example via FiftyOne: `foz.load_zoo_dataset("open-images-v7", split="validation", max_samples=N)`) — never the full set. Filter backgrounds by class labels if your rendered object class might appear in a photo (label leakage). Open Images annotations are CC-BY; photos are Flickr images under CC-BY-style licenses — attribution applies on redistribution.
 
 ## Development
 

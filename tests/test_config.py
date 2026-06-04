@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from rembrandt.config import (
+    BackgroundConfig,
     CameraConfig,
     LightConfig,
     OutputConfig,
@@ -98,6 +99,9 @@ def test_config_defaults_applied() -> None:
     assert cfg.render.samples == 32
     assert cfg.output.dir == "output"
     assert cfg.output.train_val_split == 0.8
+    assert cfg.background.mode == "none"
+    assert cfg.background.image_dir is None
+    assert cfg.background.seed is None
 
 
 @pytest.mark.parametrize(
@@ -165,6 +169,28 @@ camera:
     cfg = load_config(path)
 
     assert cfg.object.up_axis == "Z"
+
+
+def test_config_round_trip_with_background(tmp_path: Path) -> None:
+    cfg = RembrandtConfig(
+        object={"path": SAMPLE_OBJECT_PATH},
+        camera={"n": 5, "seed": 1},
+        background={"mode": "image", "image_dir": "./backgrounds", "seed": 7},
+    )
+    out = tmp_path / "background.yaml"
+    dump_config(cfg, out)
+    loaded = load_config(out)
+    assert loaded == cfg
+
+
+def test_background_config_requires_image_dir_for_image_mode() -> None:
+    with pytest.raises(ValidationError, match="image_dir"):
+        BackgroundConfig(mode="image")
+
+
+def test_background_config_rejects_invalid_mode() -> None:
+    with pytest.raises(ValidationError, match="mode"):
+        BackgroundConfig(mode="dome")  # type: ignore[arg-type]
 
 
 def test_object_config_rejects_invalid_up_axis() -> None:

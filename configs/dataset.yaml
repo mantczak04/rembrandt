@@ -59,3 +59,7 @@ render:
 output:
   dir: output
   train_val_split: 0.8
+background:
+  mode: image
+  image_dir: ./backgrounds
+  seed: 7

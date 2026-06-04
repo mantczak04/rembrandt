@@ -355,6 +355,7 @@ class Scene:
         resolution: tuple[int, int] = (256, 256),
         engine: Literal["EEVEE", "CYCLES"] = "EEVEE",
         samples: int = 32,
+        transparent_film: bool = False,
     ) -> Path:
         """Renders the current scene to a PNG file.
 
@@ -367,12 +368,14 @@ class Scene:
             samples: Render samples. For EEVEE this is TAA samples;
                      for CYCLES, path samples per pixel.
                      Higher = less noise, slower.
+            transparent_film: When True, write RGBA with a transparent world
+                background for post-render compositing over photo backgrounds.
 
-            Returns:
-                The output path as a Path object.
+        Returns:
+            The output path as a Path object.
 
-            Raises:
-                RuntimeError: If no camera has been added to the scene.
+        Raises:
+            RuntimeError: If no camera has been added to the scene.
         """
         if self.camera is None:
             raise RuntimeError("No camera in the scene. Call add_camera() before render().")
@@ -393,7 +396,12 @@ class Scene:
         bpy_scene.render.resolution_y = resolution[1]
         bpy_scene.render.resolution_percentage = 100
         bpy_scene.render.image_settings.file_format = "PNG"
-        bpy_scene.render.image_settings.color_mode = "RGB"
+        if transparent_film:
+            bpy_scene.render.film_transparent = True
+            bpy_scene.render.image_settings.color_mode = "RGBA"
+        else:
+            bpy_scene.render.film_transparent = False
+            bpy_scene.render.image_settings.color_mode = "RGB"
 
         if engine == "EEVEE":
             bpy_scene.eevee.taa_render_samples = samples

@@ -35,5 +35,8 @@ export function createDefaultConfig(objectPath = ""): RembrandtConfig {
       dir: "output",
       train_val_split: 0.8,
     },
+    background: {
+      mode: "none",
+    },
   };
 }

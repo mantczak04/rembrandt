@@ -7,6 +7,7 @@ export type Bbox = [Vec3, Vec3];
 export type SamplingStrategy = "random" | "fibonacci";
 export type LightType = "POINT" | "SUN" | "AREA";
 export type RenderEngine = "EEVEE" | "CYCLES";
+export type BackgroundMode = "none" | "image";
 export type BandEdgeKind = "azimuth" | "elevation";
 export type SourceUpAxis = "Y" | "Z";
 
@@ -103,12 +104,19 @@ export type OutputConfig = {
   train_val_split?: number;
 };
 
+export type BackgroundConfig = {
+  mode?: BackgroundMode;
+  image_dir?: string | null;
+  seed?: number | null;
+};
+
 export type RembrandtConfig = {
   object: ObjectConfig;
   camera: CameraConfig;
   lights?: LightConfig[];
   render?: RenderConfig;
   output?: OutputConfig;
+  background?: BackgroundConfig;
 };
 
 export type SaveConfigResponse = {

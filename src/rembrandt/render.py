@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
+from rembrandt.backgrounds import (
+    apply_background_to_frame,
+    choose_background,
+    index_backgrounds,
+)
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
 from rembrandt.scene import Scene
@@ -42,6 +47,31 @@ def resolve_object_path(config_path: Path, object_path: str) -> Path:
 
     relative_to_cwd = (Path.cwd() / path).resolve()
     if relative_to_cwd.is_file():
+        return relative_to_cwd
+
+    return path.resolve()
+
+
+def resolve_background_dir(config_path: Path, image_dir: str) -> Path:
+    """Resolve a background image directory relative to the config or CWD.
+
+    Args:
+        config_path: Path to the YAML config file.
+        image_dir: Background directory from the config (absolute or relative).
+
+    Returns:
+        Resolved filesystem path to the background image directory.
+    """
+    path = Path(image_dir)
+    if path.is_absolute():
+        return path.resolve()
+
+    relative_to_config = (config_path.parent / path).resolve()
+    if relative_to_config.is_dir():
+        return relative_to_config
+
+    relative_to_cwd = (Path.cwd() / path).resolve()
+    if relative_to_cwd.is_dir():
         return relative_to_cwd
 
     return path.resolve()
@@ -87,6 +117,13 @@ def render_from_config(
 
     scene.add_camera(focal_length=cfg.render.focal_length)
 
+    use_background = cfg.background.mode == "image"
+    background_pool: list[Path] = []
+    if use_background:
+        assert cfg.background.image_dir is not None
+        bg_dir = resolve_background_dir(config_path, cfg.background.image_dir)
+        background_pool = index_backgrounds(bg_dir)
+
     for index, pose in enumerate(poses):
         scene.move_camera(location=pose.location, look_at=pose.look_at)
         frame_path = output_dir / f"frame_{index:04d}.png"
@@ -95,8 +132,18 @@ def render_from_config(
             resolution=cfg.render.resolution,
             engine=cfg.render.engine,
             samples=cfg.render.samples,
+            transparent_film=use_background,
         )
-        print(f"Rendered frame {index} to {rendered}")
+        if use_background:
+            background_path = choose_background(
+                background_pool,
+                frame_index=index,
+                seed=cfg.background.seed,
+            )
+            apply_background_to_frame(rendered, background_path)
+            print(f"Rendered frame {index} to {rendered} (background: {background_path.name})")
+        else:
+            print(f"Rendered frame {index} to {rendered}")
 
     return output_dir
 

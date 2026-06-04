@@ -35,6 +35,4 @@ def test_load_object_loads_mtl_textures() -> None:
 
     texture_nodes = _image_texture_nodes()
     assert texture_nodes, "expected at least one image texture node"
-    assert all(
-        node.image is not None and _image_has_pixels(node.image) for node in texture_nodes
-    )
+    assert all(node.image is not None and _image_has_pixels(node.image) for node in texture_nodes)

@@ -1,4 +1,3 @@
-# CLAUDE.md
 
 Guidance for working in the **Rembrandt** repository. Read this before making changes.
 

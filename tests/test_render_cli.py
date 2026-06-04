@@ -7,9 +7,17 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from PIL import Image
 
+from rembrandt.backgrounds import choose_background
 from rembrandt.config import RembrandtConfig, dump_config, load_config
-from rembrandt.render import render, render_from_config, resolve_object_path
+from rembrandt.errors import BackgroundDirectoryNotFoundError
+from rembrandt.render import (
+    render,
+    render_from_config,
+    resolve_background_dir,
+    resolve_object_path,
+)
 from tests.test_paths import PROJECT_ROOT, sample_object_path, sample_object_up_axis
 
 
@@ -74,7 +82,159 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
         resolution=(128, 128),
         engine="EEVEE",
         samples=4,
+        transparent_film=False,
     )
+
+
+def test_resolve_background_dir_relative_to_config_directory(tmp_path: Path) -> None:
+    bg_dir = tmp_path / "backgrounds"
+    bg_dir.mkdir()
+    config_path = tmp_path / "cfg.yaml"
+    config_path.write_text("background:\n  image_dir: backgrounds\n", encoding="utf-8")
+
+    assert resolve_background_dir(config_path, "backgrounds") == bg_dir.resolve()
+
+
+def _write_rgba_frame(path: Path, *, size: int = 32) -> None:
+    frame = Image.new("RGBA", (size, size), (255, 0, 0, 255))
+    frame.putpixel((0, 0), (0, 0, 0, 0))
+    frame.save(path)
+
+
+def test_render_from_config_with_backgrounds(tmp_path: Path) -> None:
+    bg_dir = tmp_path / "bgs"
+    bg_dir.mkdir()
+    colors = ((0, 255, 0), (0, 0, 255), (255, 255, 0))
+    for index, color in enumerate(colors):
+        Image.new("RGB", (64, 64), color).save(bg_dir / f"bg_{index}.png")
+
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 2, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+        background={"mode": "image", "image_dir": str(bg_dir), "seed": 7},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+
+    def render_side_effect(path: Path, **kwargs: object) -> Path:
+        assert kwargs.get("transparent_film") is True
+        _write_rgba_frame(Path(path))
+        return Path(path)
+
+    scene.render.side_effect = render_side_effect
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="bg-run",
+    )
+
+    for frame_path in sorted(output_dir.glob("frame_*.png")):
+        with Image.open(frame_path) as frame:
+            assert frame.mode == "RGB"
+            assert frame.getpixel((0, 0)) != (0, 0, 0, 0)
+
+
+def test_render_from_config_background_determinism(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bg_dir = tmp_path / "bgs"
+    bg_dir.mkdir()
+    Image.new("RGB", (8, 8), (255, 0, 0)).save(bg_dir / "red.png")
+    Image.new("RGB", (8, 8), (0, 255, 0)).save(bg_dir / "green.png")
+
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 3, "seed": 0},
+        output={"dir": str(tmp_path / "frames")},
+        background={"mode": "image", "image_dir": str(bg_dir), "seed": 42},
+    )
+    dump_config(cfg, config_path)
+
+    chosen: list[Path] = []
+    original_choose = choose_background
+
+    def capture_choose(*args: object, **kwargs: object) -> Path:
+        path = original_choose(*args, **kwargs)
+        chosen.append(path)
+        return path
+
+    monkeypatch.setattr("rembrandt.render.choose_background", capture_choose)
+
+    scene = MagicMock()
+
+    def render_side_effect(path: Path, **kwargs: object) -> Path:
+        _write_rgba_frame(Path(path))
+        return Path(path)
+
+    scene.render.side_effect = render_side_effect
+
+    render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="det",
+    )
+    first_run = list(chosen)
+    chosen.clear()
+
+    render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="det2",
+    )
+
+    assert chosen == first_run
+
+
+def test_render_from_config_fail_fast_missing_background_dir(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 1, "seed": 0},
+        output={"dir": str(tmp_path / "frames")},
+        background={"mode": "image", "image_dir": str(tmp_path / "missing")},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+    with pytest.raises(BackgroundDirectoryNotFoundError):
+        render_from_config(
+            load_config(config_path),
+            config_path=config_path,
+            scene_factory=lambda: scene,
+        )
+    scene.render.assert_not_called()
+
+
+def test_render_from_config_fail_fast_empty_background_dir(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 1, "seed": 0},
+        output={"dir": str(tmp_path / "frames")},
+        background={"mode": "image", "image_dir": str(empty)},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+    with pytest.raises(ValueError, match="no background images found"):
+        render_from_config(
+            load_config(config_path),
+            config_path=config_path,
+            scene_factory=lambda: scene,
+        )
+    scene.render.assert_not_called()
 
 
 def test_render_loads_config_and_delegates(
@@ -140,6 +300,59 @@ def test_render_smoke_writes_frames(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert output_dir.is_dir()
     assert len(frames) == 2
     assert all(frame.stat().st_size > 0 for frame in frames)
+
+
+@pytest.mark.bpy
+def test_render_transparent_film_writes_rgba(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("bpy")
+    from rembrandt.scene import Scene
+
+    monkeypatch.chdir(PROJECT_ROOT)
+    obj_path = sample_object_path()
+    if not obj_path.is_file():
+        pytest.skip(f"sample object not found: {obj_path}")
+
+    scene = Scene()
+    scene.load_object(obj_path, up_axis=sample_object_up_axis())
+    scene.center_target()
+    scene.add_camera()
+    scene.move_camera(location=(4.0, 0.0, 2.0), look_at=(0.0, 0.0, 0.0))
+
+    frame_path = tmp_path / "transparent.png"
+    scene.render(frame_path, resolution=(64, 64), samples=1, transparent_film=True)
+
+    with Image.open(frame_path) as image:
+        assert image.mode == "RGBA"
+        pixels = image.load()
+        assert pixels[0, 0][3] == 0
+        center_alpha = pixels[32, 32][3]
+        assert center_alpha > 0
+
+
+@pytest.mark.bpy
+def test_render_default_writes_rgb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("bpy")
+    from rembrandt.scene import Scene
+
+    monkeypatch.chdir(PROJECT_ROOT)
+    obj_path = sample_object_path()
+    if not obj_path.is_file():
+        pytest.skip(f"sample object not found: {obj_path}")
+
+    scene = Scene()
+    scene.load_object(obj_path, up_axis=sample_object_up_axis())
+    scene.center_target()
+    scene.add_camera()
+    scene.move_camera(location=(4.0, 0.0, 2.0), look_at=(0.0, 0.0, 0.0))
+
+    frame_path = tmp_path / "opaque.png"
+    scene.render(frame_path, resolution=(64, 64), samples=1, transparent_film=False)
+
+    with Image.open(frame_path) as image:
+        assert image.mode == "RGB"
 
 
 def test_render_module_only_imports_bpy_through_scene() -> None:

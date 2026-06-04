@@ -72,6 +72,25 @@ class OutputConfig(BaseModel):
     train_val_split: float = Field(default=0.8, gt=0.0, lt=1.0)
 
 
+class BackgroundConfig(BaseModel):
+    """Randomized background compositing (post-render). Off by default.
+
+    ``image_dir`` may be absolute, relative to the config file, or relative to
+    the working directory (resolved at render time). ``seed`` is independent of
+    ``camera.seed``; ``None`` means non-reproducible background choice.
+    """
+
+    mode: Literal["none", "image"] = "none"
+    image_dir: str | None = None
+    seed: int | None = None
+
+    @model_validator(mode="after")
+    def _check_image_dir(self) -> Self:
+        if self.mode == "image" and not self.image_dir:
+            raise ValueError("background.image_dir is required when mode is 'image'")
+        return self
+
+
 class RembrandtConfig(BaseModel):
     """Top-level YAML config shared by the SPA preview and ``rembrandt render``."""
 
@@ -90,6 +109,7 @@ class RembrandtConfig(BaseModel):
     )
     render: RenderConfig = Field(default_factory=RenderConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    background: BackgroundConfig = Field(default_factory=BackgroundConfig)
 
 
 def load_config(path: str | Path) -> RembrandtConfig:
