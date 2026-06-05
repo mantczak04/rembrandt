@@ -10,9 +10,13 @@ from pydantic import BaseModel, Field, model_validator
 
 from rembrandt.camera_poses import SamplingStrategy, validate_camera_pose_inputs
 from rembrandt.convention import SourceUpAxis
+from rembrandt.light_poses import LightType, validate_light_rig_inputs
 
-LightType = Literal["POINT", "SUN", "AREA"]
 RenderEngine = Literal["EEVEE", "CYCLES"]
+
+
+def _default_light_types() -> list[LightType]:
+    return ["POINT", "SUN", "AREA"]
 
 
 class ObjectConfig(BaseModel):
@@ -72,6 +76,42 @@ class OutputConfig(BaseModel):
     train_val_split: float = Field(default=0.8, gt=0.0, lt=1.0)
 
 
+class LightRandomizationConfig(BaseModel):
+    """Per-frame randomized light rigs. Off (``static``) by default.
+
+    In ``random`` mode the static ``lights:`` list is ignored (not merged).
+    ``seed`` is independent of ``camera.seed`` and ``background.seed``.
+    ``energy_scale_range`` multiplies per-type defaults in
+    ``light_poses.DEFAULT_LIGHT_ENERGY`` (POINT/AREA in Watts, SUN unitless).
+    """
+
+    mode: Literal["static", "random"] = "static"
+    count_range: tuple[int, int] = (1, 3)
+    light_types: list[LightType] = Field(default_factory=_default_light_types)
+    azimuth_range: tuple[float, float] = (0.0, 360.0)
+    elevation_range: tuple[float, float] = (10.0, 80.0)
+    distance_range: tuple[float, float] = (4.0, 8.0)
+    energy_scale_range: tuple[float, float] = (0.5, 2.0)
+    color_jitter: float = Field(default=0.0, ge=0.0, le=1.0)
+    area_size_range: tuple[float, float] = (1.0, 3.0)
+    look_at: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    seed: int | None = None
+
+    @model_validator(mode="after")
+    def _check_ranges(self) -> Self:
+        validate_light_rig_inputs(
+            count_range=self.count_range,
+            light_types=self.light_types,
+            azimuth_range=self.azimuth_range,
+            elevation_range=self.elevation_range,
+            distance_range=self.distance_range,
+            energy_scale_range=self.energy_scale_range,
+            color_jitter=self.color_jitter,
+            area_size_range=self.area_size_range,
+        )
+        return self
+
+
 class BackgroundConfig(BaseModel):
     """Randomized background compositing (post-render). Off by default.
 
@@ -110,6 +150,7 @@ class RembrandtConfig(BaseModel):
     render: RenderConfig = Field(default_factory=RenderConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     background: BackgroundConfig = Field(default_factory=BackgroundConfig)
+    light_randomization: LightRandomizationConfig = Field(default_factory=LightRandomizationConfig)
 
 
 def load_config(path: str | Path) -> RembrandtConfig:

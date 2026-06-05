@@ -120,6 +120,31 @@ def validate_camera_pose_inputs(
     """
     if n <= 0:
         raise ValueError(f"n must be > 0, got {n}")
+    validate_spherical_ranges(
+        azimuth_range=azimuth_range,
+        elevation_range=elevation_range,
+        distance_range=distance_range,
+    )
+    if strategy not in {"random", "fibonacci"}:
+        raise ValueError(f"strategy must be one of 'random' or 'fibonacci', got {strategy!r}")
+
+
+def validate_spherical_ranges(
+    *,
+    azimuth_range: tuple[float, float],
+    elevation_range: tuple[float, float],
+    distance_range: tuple[float, float],
+) -> None:
+    """Validate azimuth, elevation, and distance sampling ranges.
+
+    Args:
+        azimuth_range: Inclusive degree range around +Z.
+        elevation_range: Inclusive degree range above the XY plane.
+        distance_range: Inclusive world-unit range for distance sampling.
+
+    Raises:
+        ValueError: If any range is invalid.
+    """
     if azimuth_range[0] > azimuth_range[1]:
         raise ValueError(f"azimuth_range min must be <= max, got {azimuth_range}")
     if elevation_range[0] < -90 or elevation_range[1] > 90:
@@ -130,8 +155,6 @@ def validate_camera_pose_inputs(
         raise ValueError(f"distance_range values must be > 0, got {distance_range}")
     if distance_range[0] > distance_range[1]:
         raise ValueError(f"distance_range min must be <= max, got {distance_range}")
-    if strategy not in {"random", "fibonacci"}:
-        raise ValueError(f"strategy must be one of 'random' or 'fibonacci', got {strategy!r}")
 
 
 def _validate_inputs(
@@ -196,16 +219,42 @@ def _sample_fibonacci(
     return poses
 
 
+def position_from_spherical(
+    *,
+    azimuth: float,
+    elevation: float,
+    distance: float,
+    look_at: Point3D,
+) -> Point3D:
+    """World-space point at spherical coordinates around ``look_at`` (radians).
+
+    Args:
+        azimuth: Azimuth in radians, counterclockwise from +X when viewed from above.
+        elevation: Elevation in radians above the XY plane.
+        distance: Distance from ``look_at`` in world units.
+        look_at: World-space center of the spherical band.
+
+    Returns:
+        The sampled world-space position.
+    """
+    horizontal_distance = distance * cos(elevation)
+    return (
+        look_at[0] + horizontal_distance * cos(azimuth),
+        look_at[1] + horizontal_distance * sin(azimuth),
+        look_at[2] + distance * sin(elevation),
+    )
+
+
 def _pose_from_spherical(
     azimuth: float,
     elevation: float,
     distance: float,
     look_at: Point3D,
 ) -> CameraPose:
-    horizontal_distance = distance * cos(elevation)
-    location = (
-        look_at[0] + horizontal_distance * cos(azimuth),
-        look_at[1] + horizontal_distance * sin(azimuth),
-        look_at[2] + distance * sin(elevation),
+    location = position_from_spherical(
+        azimuth=azimuth,
+        elevation=elevation,
+        distance=distance,
+        look_at=look_at,
     )
     return CameraPose(location=location, look_at=look_at)

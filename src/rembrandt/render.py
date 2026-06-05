@@ -15,6 +15,7 @@ from rembrandt.backgrounds import (
 )
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
+from rembrandt.light_poses import sample_light_rig
 from rembrandt.scene import Scene
 
 if TYPE_CHECKING:
@@ -105,15 +106,18 @@ def render_from_config(
     scene.load_object(object_path, up_axis=cfg.object.up_axis)
     scene.center_target()
 
-    for light in cfg.lights:
-        scene.add_light(
-            light_type=light.light_type,
-            location=light.location,
-            look_at=light.look_at,
-            energy=light.energy,
-            color=light.color,
-            size=light.size,
-        )
+    randomize_lights = cfg.light_randomization.mode == "random"
+
+    if not randomize_lights:
+        for light in cfg.lights:
+            scene.add_light(
+                light_type=light.light_type,
+                location=light.location,
+                look_at=light.look_at,
+                energy=light.energy,
+                color=light.color,
+                size=light.size,
+            )
 
     scene.add_camera(focal_length=cfg.render.focal_length)
 
@@ -125,6 +129,24 @@ def render_from_config(
         background_pool = index_backgrounds(bg_dir)
 
     for index, pose in enumerate(poses):
+        rig_summary = ""
+        if randomize_lights:
+            scene.clear_lights()
+            rig = sample_light_rig(
+                frame_index=index,
+                **cfg.light_randomization.model_dump(exclude={"mode"}),
+            )
+            rig_summary = f" lights=[{', '.join(sampled.light_type for sampled in rig)}]"
+            for sampled in rig:
+                scene.add_light(
+                    light_type=sampled.light_type,
+                    location=sampled.location,
+                    look_at=sampled.look_at,
+                    energy=sampled.energy,
+                    color=sampled.color,
+                    size=sampled.size,
+                )
+
         scene.move_camera(location=pose.location, look_at=pose.look_at)
         frame_path = output_dir / f"frame_{index:04d}.png"
         rendered = scene.render(
@@ -141,9 +163,12 @@ def render_from_config(
                 seed=cfg.background.seed,
             )
             apply_background_to_frame(rendered, background_path)
-            print(f"Rendered frame {index} to {rendered} (background: {background_path.name})")
+            print(
+                f"Rendered frame {index} to {rendered}"
+                f" (background: {background_path.name}){rig_summary}"
+            )
         else:
-            print(f"Rendered frame {index} to {rendered}")
+            print(f"Rendered frame {index} to {rendered}{rig_summary}")
 
     return output_dir
 

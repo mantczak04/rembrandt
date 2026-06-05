@@ -11,6 +11,7 @@ from rembrandt.config import (
     BackgroundConfig,
     CameraConfig,
     LightConfig,
+    LightRandomizationConfig,
     OutputConfig,
     RembrandtConfig,
     RenderConfig,
@@ -102,6 +103,9 @@ def test_config_defaults_applied() -> None:
     assert cfg.background.mode == "none"
     assert cfg.background.image_dir is None
     assert cfg.background.seed is None
+    assert cfg.light_randomization.mode == "static"
+    assert cfg.light_randomization.count_range == (1, 3)
+    assert cfg.light_randomization.light_types == ["POINT", "SUN", "AREA"]
 
 
 @pytest.mark.parametrize(
@@ -191,6 +195,51 @@ def test_background_config_requires_image_dir_for_image_mode() -> None:
 def test_background_config_rejects_invalid_mode() -> None:
     with pytest.raises(ValidationError, match="mode"):
         BackgroundConfig(mode="dome")  # type: ignore[arg-type]
+
+
+def test_config_round_trip_with_light_randomization(tmp_path: Path) -> None:
+    cfg = RembrandtConfig(
+        object={"path": SAMPLE_OBJECT_PATH},
+        camera={"n": 5, "seed": 1},
+        light_randomization={
+            "mode": "random",
+            "count_range": (2, 4),
+            "light_types": ["SUN", "AREA"],
+            "seed": 99,
+            "color_jitter": 0.2,
+        },
+    )
+    out = tmp_path / "lights.yaml"
+    dump_config(cfg, out)
+    loaded = load_config(out)
+    assert loaded == cfg
+
+
+@pytest.mark.parametrize(
+    ("light_kwargs", "message"),
+    [
+        ({"count_range": (0, 2)}, "count_range"),
+        ({"count_range": (3, 2)}, "count_range"),
+        ({"light_types": []}, "light_types"),
+        ({"light_types": ["DISCO"]}, "light_types"),
+        ({"azimuth_range": (350.0, 10.0)}, "azimuth_range"),
+        ({"elevation_range": (-91.0, 10.0)}, "elevation_range"),
+        ({"distance_range": (0.0, 1.0)}, "distance_range"),
+        ({"energy_scale_range": (0.0, 1.0)}, "energy_scale_range"),
+        ({"energy_scale_range": (2.0, 1.0)}, "energy_scale_range"),
+        ({"area_size_range": (0.0, 1.0)}, "area_size_range"),
+        ({"color_jitter": 1.5}, "color_jitter"),
+        ({"mode": "disco"}, "mode"),
+    ],
+)
+def test_light_randomization_config_rejects_invalid(
+    light_kwargs: dict[str, object],
+    message: str,
+) -> None:
+    base: dict[str, object] = {}
+    base.update(light_kwargs)
+    with pytest.raises(ValidationError, match=message):
+        LightRandomizationConfig.model_validate(base)
 
 
 def test_object_config_rejects_invalid_up_axis() -> None:

@@ -38,5 +38,8 @@ export function createDefaultConfig(objectPath = ""): RembrandtConfig {
     background: {
       mode: "none",
     },
+    light_randomization: {
+      mode: "static",
+    },
   };
 }

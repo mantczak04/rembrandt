@@ -73,6 +73,7 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
         up_axis=sample_object_up_axis(),
     )
     scene.center_target.assert_called_once()
+    scene.clear_lights.assert_not_called()
     assert scene.add_light.call_count == 1
     scene.add_camera.assert_called_once_with(focal_length=35.0)
     assert scene.move_camera.call_count == 3
@@ -84,6 +85,97 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
         samples=4,
         transparent_film=False,
     )
+
+
+def test_render_from_config_random_lights_call_order(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 3, "seed": 1},
+        lights=[
+            {
+                "light_type": "SUN",
+                "location": (99.0, 99.0, 99.0),
+                "look_at": (0.0, 0.0, 0.0),
+                "energy": 999.0,
+            }
+        ],
+        light_randomization={
+            "mode": "random",
+            "count_range": (2, 2),
+            "light_types": ["POINT"],
+            "seed": 7,
+        },
+        render={"resolution": (64, 64), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+    scene.render.side_effect = lambda path, **kwargs: Path(path)
+
+    render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="random-lights",
+    )
+
+    assert scene.clear_lights.call_count == 3
+    assert scene.add_light.call_count == 6
+    for light_call in scene.add_light.call_args_list:
+        assert light_call.kwargs.get("energy") != 999.0
+
+    relevant = {"clear_lights", "add_light", "move_camera", "render"}
+    sequence = [name for name, *_ in scene.mock_calls if name in relevant]
+    assert sequence == [
+        "clear_lights",
+        "add_light",
+        "add_light",
+        "move_camera",
+        "render",
+        "clear_lights",
+        "add_light",
+        "add_light",
+        "move_camera",
+        "render",
+        "clear_lights",
+        "add_light",
+        "add_light",
+        "move_camera",
+        "render",
+    ]
+
+
+def test_render_from_config_random_lights_determinism(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 2, "seed": 0},
+        light_randomization={"mode": "random", "count_range": (1, 1), "seed": 42},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    def collect_add_light_calls() -> list[dict[str, object]]:
+        scene = MagicMock()
+        scene.render.side_effect = lambda path, **kwargs: Path(path)
+        render_from_config(
+            load_config(config_path),
+            config_path=config_path,
+            scene_factory=lambda: scene,
+            stamp="det",
+        )
+        return [call.kwargs for call in scene.add_light.call_args_list]
+
+    first = collect_add_light_calls()
+    second = collect_add_light_calls()
+    assert first == second
+
+    cfg.light_randomization = cfg.light_randomization.model_copy(update={"seed": 43})
+    dump_config(cfg, config_path)
+    different = collect_add_light_calls()
+    assert different != first
 
 
 def test_resolve_background_dir_relative_to_config_directory(tmp_path: Path) -> None:

@@ -16,6 +16,7 @@ from rembrandt.camera.orientation import (
 )
 from rembrandt.convention import SourceUpAxis, obj_import_axes
 from rembrandt.errors import ModelFileNotFoundError
+from rembrandt.light_poses import DEFAULT_LIGHT_ENERGY
 from rembrandt.obj_assets import normalize_obj_mtllibs, resolve_texture_file
 
 _CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
@@ -58,6 +59,15 @@ class Scene:
         self._camera_requested_location = None
         self._camera_look_at = None
         self._camera_fit_target = False
+
+    def clear_lights(self) -> None:
+        """Remove all tracked lights (objects and data blocks) from the scene."""
+        for light_obj in self.lights:
+            light_data = light_obj.data
+            bpy.data.objects.remove(light_obj, do_unlink=True)
+            bpy.data.lights.remove(light_data)
+        self.lights = []
+        bpy.context.view_layer.update()
 
     def load_object(self, obj_path: str | Path, *, up_axis: SourceUpAxis = "Z") -> bpy.types.Object:
         """Load an .obj file as the target object for rendering.
@@ -313,7 +323,7 @@ class Scene:
                 AREA. Ignored for POINT (omnidirectional).
             energy: Light intensity. Units depend on type:
                 POINT and AREA in Watts, SUN in unitless strength.
-                If None, defaults are POINT=1000, SUN=5, AREA=100.
+                If None, uses ``DEFAULT_LIGHT_ENERGY`` from ``light_poses``.
             color: RGB in [0, 1]. White by default.
             size: For AREA lights, the side length in meters. Ignored
                 for other types.
@@ -322,7 +332,7 @@ class Scene:
             The created light object.
         """
         if energy is None:
-            energy = {"POINT": 1000.0, "SUN": 5.0, "AREA": 100.0}[light_type]
+            energy = DEFAULT_LIGHT_ENERGY[light_type]
 
         name = f"Light_{light_type.capitalize()}"
         light_data = bpy.data.lights.new(name=name, type=light_type)

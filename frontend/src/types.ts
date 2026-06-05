@@ -8,6 +8,7 @@ export type SamplingStrategy = "random" | "fibonacci";
 export type LightType = "POINT" | "SUN" | "AREA";
 export type RenderEngine = "EEVEE" | "CYCLES";
 export type BackgroundMode = "none" | "image";
+export type LightRandomizationMode = "static" | "random";
 export type BandEdgeKind = "azimuth" | "elevation";
 export type SourceUpAxis = "Y" | "Z";
 
@@ -110,6 +111,20 @@ export type BackgroundConfig = {
   seed?: number | null;
 };
 
+export type LightRandomizationConfig = {
+  mode?: LightRandomizationMode;
+  count_range?: [number, number];
+  light_types?: LightType[];
+  azimuth_range?: Vec2;
+  elevation_range?: Vec2;
+  distance_range?: Vec2;
+  energy_scale_range?: Vec2;
+  color_jitter?: number;
+  area_size_range?: Vec2;
+  look_at?: Vec3;
+  seed?: number | null;
+};
+
 export type RembrandtConfig = {
   object: ObjectConfig;
   camera: CameraConfig;
@@ -117,6 +132,7 @@ export type RembrandtConfig = {
   render?: RenderConfig;
   output?: OutputConfig;
   background?: BackgroundConfig;
+  light_randomization?: LightRandomizationConfig;
 };
 
 export type SaveConfigResponse = {

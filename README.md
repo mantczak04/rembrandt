@@ -102,9 +102,23 @@ output:
 #   mode: image
 #   image_dir: ./backgrounds
 #   seed: 7
+# Optional: per-frame randomized light rigs (default mode is static)
+# light_randomization:
+#   mode: random
+#   count_range: [1, 3]
+#   light_types: [POINT, SUN, AREA]
+#   seed: 7
 ```
 
 `train_val_split` is reserved for the future dataset writer and is not consumed by the current frame renderer.
+
+### Randomized lighting
+
+When `light_randomization.mode` is `random`, Rembrandt builds a fresh light rig before each frame: randomized count, types (POINT / SUN / AREA), positions on a spherical band around `look_at` (same +Z-up convention as the camera sampler), energy scaled relative to per-type defaults, optional color jitter, and AREA size. Set `light_randomization.seed` for a reproducible rig sequence (`null` means non-reproducible). This seed is independent of `camera.seed` and `background.seed`.
+
+In `random` mode the static `lights:` list is **ignored** (not merged). `energy_scale_range` multiplies type defaults from `light_poses.DEFAULT_LIGHT_ENERGY` — 1000 W for POINT, 5 for SUN, 100 W for AREA — because absolute energy values are not comparable across types. For SUN lights only the direction from `location` toward `look_at` affects shading.
+
+The default elevation band `(10, 80)` keeps sampled lights above the ground plane; widen `elevation_range` explicitly if you need light from below.
 
 ### Randomized backgrounds
 
