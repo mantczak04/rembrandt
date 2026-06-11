@@ -458,6 +458,22 @@ class Scene:
             corners.extend(target.matrix_world @ Vector(corner) for corner in target.bound_box)
         return corners
 
+    def target_radius_about(self, look_at: tuple[float, float, float]) -> float:
+        """Return the bounding-sphere radius of all targets about a look-at point.
+
+        Args:
+            look_at: World-space center for the bounding sphere.
+
+        Returns:
+            Maximum distance from ``look_at`` to any target bound-box corner,
+            or ``0.0`` when no targets are loaded.
+        """
+        corners = self._target_world_corners()
+        if not corners:
+            return 0.0
+        look_at_vec = Vector(look_at)
+        return float(max((corner - look_at_vec).length for corner in corners))
+
     def center_target(self) -> None:
         """Translate the target so its bounding-box center is at (0, 0, 0).
 

@@ -142,6 +142,29 @@ class LabelsConfig(BaseModel):
     min_visible_pixels: int = Field(default=25, ge=0)
 
 
+class FramingConfig(BaseModel):
+    """Per-frame framing diversity (scale and in-image translation).
+
+    When active, ``camera.distance_range`` is a lower bound on camera distance;
+    the sampled ``fill_range`` determines how large the object appears via
+    ``fit_margin = 1 / fill``. Center jitter offsets the look-at point in the
+    camera image plane at render time (not shown in the SPA preview).
+    """
+
+    center_jitter: float = Field(default=0.35, ge=0.0)
+    fill_range: tuple[float, float] = (0.15, 0.75)
+    seed: int | None = None
+
+    @model_validator(mode="after")
+    def _check_fill_range(self) -> Self:
+        lo, hi = self.fill_range
+        if lo <= 0 or hi <= 0:
+            raise ValueError("framing.fill_range values must be positive")
+        if lo > hi:
+            raise ValueError("framing.fill_range lower bound must not exceed upper bound")
+        return self
+
+
 class RembrandtConfig(BaseModel):
     """Top-level YAML config shared by the SPA preview and ``rembrandt render``."""
 
@@ -163,6 +186,7 @@ class RembrandtConfig(BaseModel):
     background: BackgroundConfig = Field(default_factory=BackgroundConfig)
     light_randomization: LightRandomizationConfig = Field(default_factory=LightRandomizationConfig)
     labels: LabelsConfig = Field(default_factory=LabelsConfig)
+    framing: FramingConfig = Field(default_factory=FramingConfig)
 
 
 def load_config(path: str | Path) -> RembrandtConfig:

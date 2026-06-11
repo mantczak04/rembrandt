@@ -94,6 +94,9 @@ export default function Controls({
       </div>
 
       <h2 className={styles.sectionTitle}>Camera sampling</h2>
+      <p className={styles.hint}>
+        Framing jitter is applied at render time and is not shown in this preview.
+      </p>
       <div className={styles.row}>
         <label className={styles.label} htmlFor="pose-count">
           Number of poses

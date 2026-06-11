@@ -105,6 +105,9 @@ def test_config_defaults_applied() -> None:
     assert cfg.object.class_id == 0
     assert cfg.labels.enabled is True
     assert cfg.labels.min_visible_pixels == 25
+    assert cfg.framing.center_jitter == 0.35
+    assert cfg.framing.fill_range == (0.15, 0.75)
+    assert cfg.framing.seed is None
     assert cfg.background.mode == "none"
     assert cfg.background.image_dir is None
     assert cfg.background.seed is None
@@ -265,6 +268,25 @@ def test_labels_config_rejects_negative_min_visible_pixels() -> None:
                 "object": {"path": SAMPLE_OBJECT_PATH},
                 "camera": {"n": 1},
                 "labels": {"min_visible_pixels": -1},
+            }
+        )
+
+
+def test_framing_config_rejects_invalid_fill_range() -> None:
+    with pytest.raises(ValidationError, match="fill_range"):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH},
+                "camera": {"n": 1},
+                "framing": {"fill_range": (0.8, 0.2)},
+            }
+        )
+    with pytest.raises(ValidationError, match="fill_range"):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH},
+                "camera": {"n": 1},
+                "framing": {"fill_range": (0.0, 0.5)},
             }
         )
 

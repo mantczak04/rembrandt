@@ -23,6 +23,12 @@ from rembrandt.render import (
 from tests.test_paths import PROJECT_ROOT, sample_object_path, sample_object_up_axis
 
 
+def _mock_render_scene() -> MagicMock:
+    scene = MagicMock()
+    scene.target_radius_about.return_value = 1.0
+    return scene
+
+
 def test_resolve_object_path_relative_to_project_root() -> None:
     obj_path = sample_object_path()
     relative = obj_path.relative_to(PROJECT_ROOT)
@@ -87,7 +93,7 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     )
     dump_config(cfg, config_path)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
     scene.render.side_effect = lambda path, **kwargs: (
         _write_rgba_frame(Path(path), size=128),
         Path(path),
@@ -126,6 +132,40 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     assert len(run_metadata["frames"]) == 3
     assert run_metadata["frames"][0]["camera_pose"]["location"]
     assert "light_rig" not in run_metadata["frames"][0]
+    assert "framing" in run_metadata["frames"][0]
+    first_move = scene.move_camera.call_args_list[0]
+    assert "fit_margin" in first_move.kwargs
+
+
+def test_render_from_config_framing_determinism(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 3, "seed": 1},
+        framing={"center_jitter": 0.35, "fill_range": (0.2, 0.6), "seed": 99},
+        render={"resolution": (64, 64), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    def collect_move_calls() -> list[dict[str, object]]:
+        scene = _mock_render_scene()
+        scene.render.side_effect = lambda path, **kwargs: (
+            _write_rgba_frame(Path(path), size=64),
+            Path(path),
+        )[1]
+        render_from_config(
+            load_config(config_path),
+            config_path=config_path,
+            scene_factory=lambda: scene,
+            stamp="framing-det",
+        )
+        return [call.kwargs for call in scene.move_camera.call_args_list]
+
+    first = collect_move_calls()
+    second = collect_move_calls()
+    assert first == second
+    assert any(call["fit_margin"] != 1.2 for call in first)
 
 
 def test_render_from_config_random_lights_call_order(tmp_path: Path) -> None:
@@ -152,7 +192,7 @@ def test_render_from_config_random_lights_call_order(tmp_path: Path) -> None:
     )
     dump_config(cfg, config_path)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
     scene.render.side_effect = lambda path, **kwargs: (
         _write_rgba_frame(Path(path), size=64),
         Path(path),
@@ -202,7 +242,7 @@ def test_render_from_config_random_lights_determinism(tmp_path: Path) -> None:
     dump_config(cfg, config_path)
 
     def collect_add_light_calls() -> list[dict[str, object]]:
-        scene = MagicMock()
+        scene = _mock_render_scene()
         scene.render.side_effect = lambda path, **kwargs: (
             _write_rgba_frame(Path(path), size=64),
             Path(path),
@@ -257,7 +297,7 @@ def test_render_from_config_with_backgrounds(tmp_path: Path) -> None:
     )
     dump_config(cfg, config_path)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
 
     def render_side_effect(path: Path, **kwargs: object) -> Path:
         assert kwargs.get("transparent_film") is True
@@ -307,7 +347,7 @@ def test_render_from_config_background_determinism(
 
     monkeypatch.setattr("rembrandt.render.choose_background", capture_choose)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
 
     def render_side_effect(path: Path, **kwargs: object) -> Path:
         _write_rgba_frame(Path(path))
@@ -462,7 +502,7 @@ def test_render_from_config_frames_only_skips_labels(tmp_path: Path) -> None:
     )
     dump_config(cfg, config_path)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
     scene.render.side_effect = lambda path, **kwargs: (
         _write_rgba_frame(Path(path), size=32),
         Path(path),
@@ -497,7 +537,7 @@ def test_render_from_config_labels_disabled_uses_opaque_film(tmp_path: Path) -> 
     )
     dump_config(cfg, config_path)
 
-    scene = MagicMock()
+    scene = _mock_render_scene()
     scene.render.side_effect = lambda path, **kwargs: Path(path)
 
     output_dir = render_from_config(

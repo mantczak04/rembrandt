@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from rembrandt.dataset import split_indices, write_yolo_dataset
+from rembrandt.dataset import (
+    parse_yolo_label_line,
+    print_label_stats,
+    split_indices,
+    summarize_labels,
+    write_yolo_dataset,
+)
 
 
 def test_dataset_module_is_bpy_free() -> None:
@@ -121,6 +127,57 @@ def test_write_yolo_dataset_creates_empty_labels_when_missing(tmp_path: Path) ->
     label = out_dir / "labels" / "train" / "frame_0000.txt"
     assert label.is_file()
     assert label.read_text(encoding="utf-8") == ""
+
+
+def test_parse_yolo_label_line_accepts_valid_box() -> None:
+    parsed = parse_yolo_label_line("0 0.500000 0.500000 0.200000 0.300000")
+    assert parsed == (0, 0.5, 0.5, 0.2, 0.3)
+
+
+def test_parse_yolo_label_line_rejects_invalid() -> None:
+    assert parse_yolo_label_line("") is None
+    assert parse_yolo_label_line("0 0.5 0.5 0.2") is None
+    assert parse_yolo_label_line("0 1.5 0.5 0.2 0.2") is None
+
+
+def test_summarize_labels_from_yolo_layout(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    for split, lines in {
+        "train": ["0 0.2 0.5 0.1 0.4\n", "0 0.8 0.5 0.1 0.6\n"],
+        "val": ["0 0.5 0.3 0.2 0.2\n", ""],
+    }.items():
+        label_dir = dataset_dir / "labels" / split
+        label_dir.mkdir(parents=True)
+        for index, line in enumerate(lines):
+            (label_dir / f"frame_{index:04d}.txt").write_text(line, encoding="utf-8")
+
+    summary = summarize_labels(dataset_dir)
+    assert summary.total_files == 4
+    assert summary.labeled_count == 3
+    assert summary.empty_count == 1
+    assert min(summary.centers_x) == pytest.approx(0.2)
+    assert max(summary.centers_x) == pytest.approx(0.8)
+    assert min(summary.heights) == pytest.approx(0.2)
+    assert max(summary.heights) == pytest.approx(0.6)
+
+
+def test_print_label_stats_writes_summary(capsys: pytest.CaptureFixture[str]) -> None:
+    from rembrandt.dataset import LabelSummary
+
+    print_label_stats(
+        LabelSummary(
+            total_files=2,
+            labeled_count=1,
+            empty_count=1,
+            centers_x=(0.25, 0.75),
+            centers_y=(0.5, 0.5),
+            heights=(0.2, 0.8),
+            widths=(0.1, 0.1),
+        )
+    )
+    output = capsys.readouterr().out
+    assert "Label files: 2 total" in output
+    assert "height:" in output
 
 
 def test_write_yolo_dataset_no_frames_raises(tmp_path: Path) -> None:

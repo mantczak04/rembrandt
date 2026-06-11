@@ -1,10 +1,12 @@
-"""YOLO dataset layout and train/val splitting. NO bpy."""
+"""YOLO dataset layout, train/val splitting, and label analysis. NO bpy."""
 
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from random import Random
+from statistics import mean, pstdev
 
 import yaml
 
@@ -112,3 +114,124 @@ def write_yolo_dataset(
         yaml.safe_dump(data_yaml, handle, default_flow_style=False, sort_keys=False)
 
     return yaml_path
+
+
+@dataclass(frozen=True)
+class LabelSummary:
+    """Distribution stats for YOLO labels in a dataset directory."""
+
+    total_files: int
+    labeled_count: int
+    empty_count: int
+    centers_x: tuple[float, ...]
+    centers_y: tuple[float, ...]
+    heights: tuple[float, ...]
+    widths: tuple[float, ...]
+
+
+def parse_yolo_label_line(line: str) -> tuple[int, float, float, float, float] | None:
+    """Parse one YOLO detection line into class id and normalized box.
+
+    Args:
+        line: A single label line ``"<class> <cx> <cy> <w> <h>"``.
+
+    Returns:
+        ``(class_id, cx, cy, w, h)`` when the line is valid, else ``None``.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    parts = stripped.split()
+    if len(parts) != 5:
+        return None
+
+    try:
+        class_id = int(parts[0])
+        cx, cy, width, height = (float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4]))
+    except ValueError:
+        return None
+
+    if not all(0.0 <= value <= 1.0 for value in (cx, cy, width, height)):
+        return None
+
+    return class_id, cx, cy, width, height
+
+
+def _iter_label_files(dataset_dir: Path) -> list[Path]:
+    labels_root = dataset_dir / "labels"
+    if labels_root.is_dir():
+        return sorted(labels_root.rglob("*.txt"))
+    return sorted(dataset_dir.glob("frame_*.txt"))
+
+
+def summarize_labels(dataset_dir: Path) -> LabelSummary:
+    """Scan YOLO label files and collect bbox distribution statistics.
+
+    Args:
+        dataset_dir: A flat run directory or a YOLO ``dataset/`` root with
+            ``labels/{train,val}`` subdirectories.
+
+    Returns:
+        Summary stats for non-empty labels in the directory tree.
+    """
+    label_paths = _iter_label_files(dataset_dir)
+    centers_x: list[float] = []
+    centers_y: list[float] = []
+    heights: list[float] = []
+    widths: list[float] = []
+    labeled_count = 0
+    empty_count = 0
+
+    for label_path in label_paths:
+        parsed_any = False
+        for line in label_path.read_text(encoding="utf-8").splitlines():
+            parsed = parse_yolo_label_line(line)
+            if parsed is None:
+                continue
+            parsed_any = True
+            _, cx, cy, width, height = parsed
+            centers_x.append(cx)
+            centers_y.append(cy)
+            widths.append(width)
+            heights.append(height)
+
+        if parsed_any:
+            labeled_count += 1
+        else:
+            empty_count += 1
+
+    return LabelSummary(
+        total_files=len(label_paths),
+        labeled_count=labeled_count,
+        empty_count=empty_count,
+        centers_x=tuple(centers_x),
+        centers_y=tuple(centers_y),
+        heights=tuple(heights),
+        widths=tuple(widths),
+    )
+
+
+def _format_range(values: tuple[float, ...]) -> str:
+    if not values:
+        return "n/a"
+    if len(values) == 1:
+        return f"{values[0]:.3f}"
+    spread = pstdev(values) if len(values) > 1 else 0.0
+    return f"min={min(values):.3f} max={max(values):.3f} mean={mean(values):.3f} std={spread:.3f}"
+
+
+def print_label_stats(summary: LabelSummary) -> None:
+    """Print a human-readable label distribution summary to stdout.
+
+    Args:
+        summary: Output from ``summarize_labels``.
+    """
+    print(f"Label files: {summary.total_files} total")
+    print(f"  with boxes: {summary.labeled_count}")
+    print(f"  empty: {summary.empty_count}")
+    if summary.centers_x:
+        print(f"  cx: {_format_range(summary.centers_x)}")
+        print(f"  cy: {_format_range(summary.centers_y)}")
+        print(f"  height: {_format_range(summary.heights)}")
+        print(f"  width: {_format_range(summary.widths)}")

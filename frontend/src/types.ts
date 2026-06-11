@@ -120,6 +120,12 @@ export type LabelsConfig = {
   min_visible_pixels?: number;
 };
 
+export type FramingConfig = {
+  center_jitter?: number;
+  fill_range?: Vec2;
+  seed?: number | null;
+};
+
 export type LightRandomizationConfig = {
   mode?: LightRandomizationMode;
   count_range?: [number, number];
@@ -143,6 +149,7 @@ export type RembrandtConfig = {
   background?: BackgroundConfig;
   light_randomization?: LightRandomizationConfig;
   labels?: LabelsConfig;
+  framing?: FramingConfig;
 };
 
 export type SaveConfigResponse = {

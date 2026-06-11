@@ -46,5 +46,9 @@ export function createDefaultConfig(objectPath = ""): RembrandtConfig {
       enabled: true,
       min_visible_pixels: 25,
     },
+    framing: {
+      center_jitter: 0.35,
+      fill_range: [0.15, 0.75],
+    },
   };
 }

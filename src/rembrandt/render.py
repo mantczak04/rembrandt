@@ -26,7 +26,8 @@ from rembrandt.backgrounds import (
 )
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
-from rembrandt.dataset import write_yolo_dataset
+from rembrandt.dataset import print_label_stats, summarize_labels, write_yolo_dataset
+from rembrandt.framing import sample_frame_framing
 from rembrandt.light_poses import sample_light_rig
 from rembrandt.scene import Scene
 
@@ -223,7 +224,22 @@ def render_from_config(
                     size=sampled.size,
                 )
 
-        scene.move_camera(location=pose.location, look_at=pose.look_at)
+        framing = sample_frame_framing(
+            frame_index=index,
+            camera_location=pose.location,
+            look_at=pose.look_at,
+            target_radius=scene.target_radius_about(pose.look_at),
+            focal_length=cfg.render.focal_length,
+            resolution=cfg.render.resolution,
+            center_jitter=cfg.framing.center_jitter,
+            fill_range=cfg.framing.fill_range,
+            seed=cfg.framing.seed,
+        )
+        scene.move_camera(
+            location=pose.location,
+            look_at=framing.look_at,
+            fit_margin=framing.fit_margin,
+        )
         frame_path = output_dir / f"frame_{index:04d}.png"
         rendered = scene.render(
             frame_path,
@@ -286,6 +302,12 @@ def render_from_config(
                 "location": list(pose.location),
                 "look_at": list(pose.look_at),
             },
+            "framing": {
+                "fill": framing.fill,
+                "fit_margin": framing.fit_margin,
+                "jitter_uv": list(framing.jitter_uv),
+                "look_at": list(framing.look_at),
+            },
         }
         if light_rig_record is not None:
             frame_record["light_rig"] = light_rig_record
@@ -306,12 +328,18 @@ def render_from_config(
     return output_dir
 
 
-def render(config_path: Path, *, frames_only: bool = False) -> tuple[Path, Path | None]:
+def render(
+    config_path: Path,
+    *,
+    frames_only: bool = False,
+    stats: bool = False,
+) -> tuple[Path, Path | None]:
     """Load a YAML config and render frames (and optionally a YOLO dataset).
 
     Args:
         config_path: Path to the render config YAML file.
         frames_only: When True, skip YOLO dataset layout.
+        stats: When True, print label distribution stats after dataset layout.
 
     Returns:
         ``(run_dir, data_yaml_path)`` where ``data_yaml_path`` is ``None`` when
@@ -332,6 +360,8 @@ def render(config_path: Path, *, frames_only: bool = False) -> tuple[Path, Path 
         train_fraction=cfg.output.train_val_split,
         seed=cfg.output.split_seed,
     )
+    if stats:
+        print_label_stats(summarize_labels(dataset_dir))
     return output_dir, data_yaml
 
 
@@ -353,9 +383,16 @@ def render_command(
             help="Render PNG frames only; skip label files and YOLO dataset layout.",
         ),
     ] = False,
+    stats: Annotated[
+        bool,
+        typer.Option(
+            "--stats",
+            help="Print bbox center and height distributions from generated labels.",
+        ),
+    ] = False,
 ) -> None:
     """Render dataset frames from a YAML configuration file."""
-    output_dir, data_yaml = render(config_path, frames_only=frames_only)
+    output_dir, data_yaml = render(config_path, frames_only=frames_only, stats=stats)
     if data_yaml is not None:
         typer.echo(f"Finished rendering dataset to {data_yaml.parent}")
         typer.echo(str(data_yaml))
