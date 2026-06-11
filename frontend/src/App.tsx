@@ -207,33 +207,34 @@ export default function App() {
             showRays={showRays}
           />
         </div>
-        <div className={styles.controlsPane}>
-          <Controls
-            config={config}
-            objectPathInput={objectPathInput}
-            showCameras={showCameras}
-            showRays={showRays}
-            loadingMesh={loadingMesh}
-            loadingPoses={loadingPoses}
-            meshError={meshError}
-            posesError={posesError}
-            onObjectPathInputChange={setObjectPathInput}
-            onObjectUpAxisChange={handleObjectUpAxisChange}
-            onLoadMesh={() => void handleLoadMesh()}
-            onCameraChange={handleCameraChange}
-            onConfigChange={handleConfigChange}
-            onShowCamerasChange={setShowCameras}
-            onShowRaysChange={setShowRays}
-          />
+        <div className={styles.controlsColumn}>
+          <div className={styles.controlsScroll}>
+            <Controls
+              config={config}
+              objectPathInput={objectPathInput}
+              showCameras={showCameras}
+              showRays={showRays}
+              loadingMesh={loadingMesh}
+              loadingPoses={loadingPoses}
+              meshError={meshError}
+              posesError={posesError}
+              onObjectPathInputChange={setObjectPathInput}
+              onObjectUpAxisChange={handleObjectUpAxisChange}
+              onLoadMesh={() => void handleLoadMesh()}
+              onCameraChange={handleCameraChange}
+              onConfigChange={handleConfigChange}
+              onShowCamerasChange={setShowCameras}
+              onShowRaysChange={setShowRays}
+            />
+          </div>
+          <div className={styles.saveFooter}>
+            <SaveBar
+              config={config}
+              schemaDefaults={schemaDefaults}
+              disabled={mesh === null}
+            />
+          </div>
         </div>
-      </div>
-
-      <div className={styles.savePane}>
-        <SaveBar
-          config={config}
-          schemaDefaults={schemaDefaults}
-          disabled={mesh === null}
-        />
       </div>
     </div>
   );

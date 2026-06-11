@@ -30,7 +30,7 @@ export default function SaveBar({
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -54,11 +54,19 @@ export default function SaveBar({
 
   return (
     <section className={styles.panel}>
-      <h2 className={styles.sectionTitle}>Save config</h2>
-      <div className={styles.row}>
-        <label className={styles.label} htmlFor="config-filename">
-          Filename
+      <div className={styles.saveHeaderRow}>
+        <h2 className={styles.sectionTitle}>Save config</h2>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={showPreview}
+            onChange={(event) => setShowPreview(event.target.checked)}
+          />
+          Show YAML preview
         </label>
+      </div>
+
+      <div className={styles.saveRow}>
         <input
           id="config-filename"
           className={styles.input}
@@ -66,6 +74,7 @@ export default function SaveBar({
           value={filename}
           onChange={(event) => setFilename(event.target.value)}
           placeholder="dataset.yaml"
+          aria-label="Config filename"
         />
         <button
           type="button"
@@ -77,22 +86,14 @@ export default function SaveBar({
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {savedPath ? (
-          <p className={styles.hint}>
-            Saved to <code>{savedPath}</code>
-          </p>
-        ) : null}
-        {error ? <p className={styles.error}>{error}</p> : null}
       </div>
 
-      <label className={styles.checkboxRow}>
-        <input
-          type="checkbox"
-          checked={showPreview}
-          onChange={(event) => setShowPreview(event.target.checked)}
-        />
-        Show YAML preview
-      </label>
+      {savedPath ? (
+        <p className={styles.hint}>
+          Saved to <code>{savedPath}</code>
+        </p>
+      ) : null}
+      {error ? <p className={styles.error}>{error}</p> : null}
 
       {showPreview ? (
         <pre className={styles.yamlPreview} aria-label="Config YAML preview">

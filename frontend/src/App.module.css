@@ -57,17 +57,35 @@
   flex-direction: column;
 }
 
-.controlsPane {
+.controlsColumn {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.controlsScroll {
+  flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.savePane {
+.saveFooter {
   flex-shrink: 0;
+  border-top: 1px solid #2d333b;
+  padding-top: 0.75rem;
 }
 
 @media (max-width: 900px) {
+  .layout {
+    height: auto;
+    overflow: visible;
+  }
+
   .main {
     grid-template-columns: 1fr;
+  }
+
+  .viewportPane {
+    height: 45vh;
   }
 }
