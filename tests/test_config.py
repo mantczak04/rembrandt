@@ -108,6 +108,12 @@ def test_config_defaults_applied() -> None:
     assert cfg.framing.center_jitter == 0.35
     assert cfg.framing.fill_range == (0.15, 0.75)
     assert cfg.framing.seed is None
+    assert cfg.postfx.mode == "off"
+    assert cfg.postfx.gaussian_noise_sigma == (0.0, 8.0)
+    assert cfg.postfx.blur_radius == (0.0, 1.2)
+    assert cfg.postfx.jpeg_quality == (55, 95)
+    assert cfg.postfx.exposure_ev == (-0.7, 0.7)
+    assert cfg.postfx.seed is None
     assert cfg.background.mode == "none"
     assert cfg.background.image_dir is None
     assert cfg.background.seed is None
@@ -268,6 +274,51 @@ def test_labels_config_rejects_negative_min_visible_pixels() -> None:
                 "object": {"path": SAMPLE_OBJECT_PATH},
                 "camera": {"n": 1},
                 "labels": {"min_visible_pixels": -1},
+            }
+        )
+
+
+def test_config_round_trip_with_postfx(tmp_path: Path) -> None:
+    cfg = RembrandtConfig(
+        object={"path": SAMPLE_OBJECT_PATH},
+        camera={"n": 5, "seed": 1},
+        postfx={
+            "mode": "random",
+            "gaussian_noise_sigma": (1.0, 4.0),
+            "blur_radius": (0.2, 0.8),
+            "jpeg_quality": (60, 90),
+            "exposure_ev": (-0.3, 0.3),
+            "seed": 11,
+        },
+    )
+    out = tmp_path / "postfx.yaml"
+    dump_config(cfg, out)
+    loaded = load_config(out)
+    assert loaded == cfg
+
+
+@pytest.mark.parametrize(
+    ("postfx_kwargs", "message"),
+    [
+        ({"gaussian_noise_sigma": (-1.0, 1.0)}, "gaussian_noise_sigma"),
+        ({"gaussian_noise_sigma": (2.0, 1.0)}, "gaussian_noise_sigma"),
+        ({"blur_radius": (-0.1, 1.0)}, "blur_radius"),
+        ({"jpeg_quality": (0, 95)}, "jpeg_quality"),
+        ({"jpeg_quality": (95, 55)}, "jpeg_quality"),
+        ({"exposure_ev": (0.5, -0.5)}, "exposure_ev"),
+        ({"mode": "disco"}, "mode"),
+    ],
+)
+def test_postfx_config_rejects_invalid(
+    postfx_kwargs: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH},
+                "camera": {"n": 1},
+                "postfx": postfx_kwargs,
             }
         )
 

@@ -126,6 +126,17 @@ export type FramingConfig = {
   seed?: number | null;
 };
 
+export type PostFxMode = "off" | "random";
+
+export type PostFxConfig = {
+  mode?: PostFxMode;
+  gaussian_noise_sigma?: Vec2;
+  blur_radius?: Vec2;
+  jpeg_quality?: [number, number];
+  exposure_ev?: Vec2;
+  seed?: number | null;
+};
+
 export type LightRandomizationConfig = {
   mode?: LightRandomizationMode;
   count_range?: [number, number];
@@ -150,6 +161,7 @@ export type RembrandtConfig = {
   light_randomization?: LightRandomizationConfig;
   labels?: LabelsConfig;
   framing?: FramingConfig;
+  postfx?: PostFxConfig;
 };
 
 export type SaveConfigResponse = {

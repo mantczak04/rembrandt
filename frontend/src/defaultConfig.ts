@@ -50,5 +50,12 @@ export function createDefaultConfig(objectPath = ""): RembrandtConfig {
       center_jitter: 0.35,
       fill_range: [0.15, 0.75],
     },
+    postfx: {
+      mode: "off",
+      gaussian_noise_sigma: [0, 8],
+      blur_radius: [0, 1.2],
+      jpeg_quality: [55, 95],
+      exposure_ev: [-0.7, 0.7],
+    },
   };
 }

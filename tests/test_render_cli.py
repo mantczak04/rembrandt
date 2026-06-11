@@ -492,6 +492,98 @@ def test_render_smoke_writes_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert (run_dir / "dataset" / "labels" / "train").is_dir()
 
 
+def test_render_from_config_postfx_records_sampled_values(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 2, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+        postfx={"mode": "random", "seed": 5},
+    )
+    dump_config(cfg, config_path)
+
+    scene = _mock_render_scene()
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=32),
+        Path(path),
+    )[1]
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="postfx-run",
+    )
+
+    run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert "postfx" in run_metadata["frames"][0]
+    postfx = run_metadata["frames"][0]["postfx"]
+    assert set(postfx) == {
+        "gaussian_noise_sigma",
+        "blur_radius",
+        "jpeg_quality",
+        "exposure_ev",
+    }
+
+
+def test_render_from_config_postfx_off_is_no_op(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 1, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+        postfx={"mode": "off"},
+    )
+    dump_config(cfg, config_path)
+
+    scene = _mock_render_scene()
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=32),
+        Path(path),
+    )[1]
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="postfx-off",
+    )
+
+    run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert "postfx" not in run_metadata["frames"][0]
+
+
+def test_render_from_config_postfx_determinism(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 2, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+        postfx={"mode": "random", "seed": 99},
+    )
+    dump_config(cfg, config_path)
+
+    def collect_postfx() -> list[dict[str, object]]:
+        scene = _mock_render_scene()
+        scene.render.side_effect = lambda path, **kwargs: (
+            _write_rgba_frame(Path(path), size=32),
+            Path(path),
+        )[1]
+        output_dir = render_from_config(
+            load_config(config_path),
+            config_path=config_path,
+            scene_factory=lambda: scene,
+            stamp="postfx-det",
+        )
+        run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+        return [frame["postfx"] for frame in run_metadata["frames"]]
+
+    assert collect_postfx() == collect_postfx()
+
+
 def test_render_from_config_frames_only_skips_labels(tmp_path: Path) -> None:
     config_path = tmp_path / "render.yaml"
     cfg = RembrandtConfig(

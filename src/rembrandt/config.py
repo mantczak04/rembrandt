@@ -142,6 +142,45 @@ class LabelsConfig(BaseModel):
     min_visible_pixels: int = Field(default=25, ge=0)
 
 
+class PostFxConfig(BaseModel):
+    """Sensor-domain post-processing applied after background compositing.
+
+    Effects simulate camera/sensor artifacts that YOLO train-time augmentation
+    does not model. All are geometry-preserving; labels are derived from the
+    render alpha mask before post-fx runs. ``seed`` is independent of other
+    config seeds.
+    """
+
+    mode: Literal["off", "random"] = "off"
+    gaussian_noise_sigma: tuple[float, float] = (0.0, 8.0)
+    blur_radius: tuple[float, float] = (0.0, 1.2)
+    jpeg_quality: tuple[int, int] = (55, 95)
+    exposure_ev: tuple[float, float] = (-0.7, 0.7)
+    seed: int | None = None
+
+    @model_validator(mode="after")
+    def _check_ranges(self) -> Self:
+        noise_lo, noise_hi = self.gaussian_noise_sigma
+        if noise_lo < 0 or noise_hi < 0 or noise_lo > noise_hi:
+            raise ValueError("postfx.gaussian_noise_sigma must be non-negative with lo <= hi")
+
+        blur_lo, blur_hi = self.blur_radius
+        if blur_lo < 0 or blur_hi < 0 or blur_lo > blur_hi:
+            raise ValueError("postfx.blur_radius must be non-negative with lo <= hi")
+
+        quality_lo, quality_hi = self.jpeg_quality
+        if not (1 <= quality_lo <= 100 and 1 <= quality_hi <= 100):
+            raise ValueError("postfx.jpeg_quality values must be in [1, 100]")
+        if quality_lo > quality_hi:
+            raise ValueError("postfx.jpeg_quality lower bound must not exceed upper bound")
+
+        ev_lo, ev_hi = self.exposure_ev
+        if ev_lo > ev_hi:
+            raise ValueError("postfx.exposure_ev lower bound must not exceed upper bound")
+
+        return self
+
+
 class FramingConfig(BaseModel):
     """Per-frame framing diversity (scale and in-image translation).
 
@@ -187,6 +226,7 @@ class RembrandtConfig(BaseModel):
     light_randomization: LightRandomizationConfig = Field(default_factory=LightRandomizationConfig)
     labels: LabelsConfig = Field(default_factory=LabelsConfig)
     framing: FramingConfig = Field(default_factory=FramingConfig)
+    postfx: PostFxConfig = Field(default_factory=PostFxConfig)
 
 
 def load_config(path: str | Path) -> RembrandtConfig:

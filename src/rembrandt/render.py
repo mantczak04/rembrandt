@@ -6,9 +6,11 @@ import datetime
 import json
 from dataclasses import asdict
 from pathlib import Path
+from random import Random
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
+import numpy.typing as npt
 import typer
 from PIL import Image
 
@@ -19,16 +21,18 @@ from rembrandt.annotations import (
     yolo_line,
 )
 from rembrandt.backgrounds import (
-    apply_background_to_frame,
     choose_background,
+    composite_over,
     composite_over_color,
     index_backgrounds,
+    load_cover_resized,
 )
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
 from rembrandt.dataset import print_label_stats, summarize_labels, write_yolo_dataset
 from rembrandt.framing import sample_frame_framing
 from rembrandt.light_poses import sample_light_rig
+from rembrandt.postfx import apply_postfx, sample_frame_postfx
 from rembrandt.scene import Scene
 
 if TYPE_CHECKING:
@@ -250,6 +254,7 @@ def render_from_config(
         )
 
         background_record: str | None = None
+        postfx_record: dict[str, float | int] | None = None
         if transparent_film:
             with Image.open(rendered) as frame_image:
                 foreground = np.asarray(frame_image.convert("RGBA"), dtype=np.uint8)
@@ -258,6 +263,7 @@ def render_from_config(
             bbox_px = bbox_from_mask(mask) if mask is not None else None
             visible_pixels = visible_pixel_count(mask) if mask is not None else 0
 
+            composited_rgb: npt.NDArray[np.uint8] | None = None
             if use_background:
                 background_path = choose_background(
                     background_pool,
@@ -265,21 +271,44 @@ def render_from_config(
                     seed=cfg.background.seed,
                 )
                 background_record = background_path.name
-                apply_background_to_frame(
-                    rendered,
+                frame_height, frame_width = foreground.shape[:2]
+                background_rgb = load_cover_resized(
                     background_path,
-                    foreground_rgba=foreground,
+                    width=frame_width,
+                    height=frame_height,
                 )
+                composited_rgb = composite_over(foreground, background_rgb)
                 print(
                     f"Rendered frame {index} to {rendered}"
                     f" (background: {background_path.name}){rig_summary}"
                 )
             elif use_labels:
-                composited = composite_over_color(foreground, cfg.background.color)
-                Image.fromarray(composited, mode="RGB").save(rendered, format="PNG")
+                composited_rgb = composite_over_color(foreground, cfg.background.color)
                 print(f"Rendered frame {index} to {rendered}{rig_summary}")
             else:
                 print(f"Rendered frame {index} to {rendered}{rig_summary}")
+
+            if composited_rgb is not None:
+                if cfg.postfx.mode == "random":
+                    postfx_params = sample_frame_postfx(
+                        frame_index=index,
+                        **cfg.postfx.model_dump(exclude={"mode"}),
+                    )
+                    postfx_rng = (
+                        Random(cfg.postfx.seed + index) if cfg.postfx.seed is not None else Random()
+                    )
+                    composited_rgb = apply_postfx(
+                        composited_rgb,
+                        postfx_params,
+                        rng=postfx_rng,
+                    )
+                    postfx_record = {
+                        "gaussian_noise_sigma": postfx_params.gaussian_noise_sigma,
+                        "blur_radius": postfx_params.blur_radius,
+                        "jpeg_quality": postfx_params.jpeg_quality,
+                        "exposure_ev": postfx_params.exposure_ev,
+                    }
+                Image.fromarray(composited_rgb, mode="RGB").save(rendered, format="PNG")
 
             if use_labels:
                 label_path = output_dir / f"frame_{index:04d}.txt"
@@ -313,6 +342,8 @@ def render_from_config(
             frame_record["light_rig"] = light_rig_record
         if background_record is not None:
             frame_record["background"] = background_record
+        if postfx_record is not None:
+            frame_record["postfx"] = postfx_record
         frame_records.append(frame_record)
 
     run_metadata = {
