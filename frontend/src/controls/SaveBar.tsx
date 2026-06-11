@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ApiError, saveConfig } from "../api";
+import { configToYaml } from "../serializeConfig";
 import type { RembrandtConfig } from "../types";
 import styles from "./Controls.module.css";
 
@@ -24,7 +25,7 @@ export default function SaveBar({ config, disabled = false }: SaveBarProps) {
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   const handleSave = async () => {
     setSaving(true);
@@ -83,24 +84,12 @@ export default function SaveBar({ config, disabled = false }: SaveBarProps) {
           checked={showPreview}
           onChange={(event) => setShowPreview(event.target.checked)}
         />
-        Show config preview
+        Show YAML preview
       </label>
 
       {showPreview ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: "0.75rem",
-            fontSize: "0.75rem",
-            overflow: "auto",
-            maxHeight: "14rem",
-            borderRadius: "0.375rem",
-            background: "#0d1117",
-            border: "1px solid #30363d",
-            color: "#c9d1d9",
-          }}
-        >
-          {JSON.stringify(config, null, 2)}
+        <pre className={styles.yamlPreview} aria-label="Config YAML preview">
+          {configToYaml(config)}
         </pre>
       ) : null}
     </section>

@@ -150,6 +150,10 @@ export default function App() {
     [mesh, refreshPoses],
   );
 
+  const handleConfigChange = useCallback((nextConfig: RembrandtConfig) => {
+    setConfig(nextConfig);
+  }, []);
+
   return (
     <div className={styles.layout}>
       <header className={styles.header}>
@@ -193,6 +197,7 @@ export default function App() {
             onObjectUpAxisChange={handleObjectUpAxisChange}
             onLoadMesh={() => void handleLoadMesh()}
             onCameraChange={handleCameraChange}
+            onConfigChange={handleConfigChange}
             onShowCamerasChange={setShowCameras}
             onShowRaysChange={setShowRays}
           />
