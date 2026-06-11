@@ -135,22 +135,48 @@ def composite_over(
     return np.rint(blended).astype(np.uint8)
 
 
+def composite_over_color(
+    foreground_rgba: npt.NDArray[np.uint8],
+    color: tuple[float, float, float],
+) -> npt.NDArray[np.uint8]:
+    """Alpha-composite an RGBA foreground over a flat RGB background color.
+
+    Args:
+        foreground_rgba: Foreground with shape ``(h, w, 4)``.
+        color: Background RGB in ``[0, 1]`` (linear-ish display values).
+
+    Returns:
+        Composited RGB array with shape ``(h, w, 3)``.
+    """
+    rgb = tuple(int(round(channel * 255.0)) for channel in color)
+    height, width = foreground_rgba.shape[:2]
+    background = np.full((height, width, 3), rgb, dtype=np.uint8)
+    return composite_over(foreground_rgba, background)
+
+
 def apply_background_to_frame(
     frame_path: str | Path,
     background_path: str | Path,
+    *,
+    foreground_rgba: npt.NDArray[np.uint8] | None = None,
 ) -> Path:
     """Composite a background image over a rendered RGBA frame in place.
 
     Args:
         frame_path: Path to the rendered frame PNG (read and overwritten).
         background_path: Path to the background photo.
+        foreground_rgba: Optional pre-loaded RGBA array; when omitted the
+            frame is read from ``frame_path``.
 
     Returns:
         ``frame_path`` as a ``Path`` after writing the composited RGB PNG.
     """
     output = Path(frame_path)
-    with Image.open(output) as frame_image:
-        foreground = np.asarray(frame_image.convert("RGBA"), dtype=np.uint8)
+    if foreground_rgba is None:
+        with Image.open(output) as frame_image:
+            foreground = np.asarray(frame_image.convert("RGBA"), dtype=np.uint8)
+    else:
+        foreground = foreground_rgba
     height, width = foreground.shape[:2]
     background = load_cover_resized(background_path, width=width, height=height)
     composited = composite_over(foreground, background)

@@ -88,7 +88,10 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
     dump_config(cfg, config_path)
 
     scene = MagicMock()
-    scene.render.side_effect = lambda path, **kwargs: Path(path)
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=128),
+        Path(path),
+    )[1]
 
     output_dir = render_from_config(
         load_config(config_path),
@@ -113,8 +116,10 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
         resolution=(128, 128),
         engine="EEVEE",
         samples=4,
-        transparent_film=False,
+        transparent_film=True,
     )
+
+    assert (output_dir / "frame_0000.txt").is_file()
 
     run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
     assert run_metadata["resolved_object_path"] == str(sample_object_path().resolve())
@@ -148,7 +153,10 @@ def test_render_from_config_random_lights_call_order(tmp_path: Path) -> None:
     dump_config(cfg, config_path)
 
     scene = MagicMock()
-    scene.render.side_effect = lambda path, **kwargs: Path(path)
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=64),
+        Path(path),
+    )[1]
 
     render_from_config(
         load_config(config_path),
@@ -195,7 +203,10 @@ def test_render_from_config_random_lights_determinism(tmp_path: Path) -> None:
 
     def collect_add_light_calls() -> list[dict[str, object]]:
         scene = MagicMock()
-        scene.render.side_effect = lambda path, **kwargs: Path(path)
+        scene.render.side_effect = lambda path, **kwargs: (
+            _write_rgba_frame(Path(path), size=64),
+            Path(path),
+        )[1]
         render_from_config(
             load_config(config_path),
             config_path=config_path,
@@ -224,8 +235,8 @@ def test_resolve_background_dir_relative_to_config_directory(tmp_path: Path) -> 
 
 
 def _write_rgba_frame(path: Path, *, size: int = 32) -> None:
-    frame = Image.new("RGBA", (size, size), (255, 0, 0, 255))
-    frame.putpixel((0, 0), (0, 0, 0, 0))
+    frame = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    frame.paste((255, 0, 0, 255), (8, 8, 24, 24))
     frame.save(path)
 
 
@@ -385,21 +396,29 @@ def test_render_loads_config_and_delegates(
         config_path: Path,
         scene_factory: object = None,
         stamp: str | None = None,
+        frames_only: bool = False,
     ) -> Path:
         captured["cfg"] = loaded
         captured["config_path"] = config_path
+        captured["frames_only"] = frames_only
         return tmp_path / "out" / "stamp"
 
-    monkeypatch.setattr("rembrandt.render.render_from_config", fake_render_from_config)
-    result = render(config_path)
+    def fake_write_yolo_dataset(*args: object, **kwargs: object) -> Path:
+        return tmp_path / "out" / "stamp" / "dataset" / "data.yaml"
 
-    assert result == tmp_path / "out" / "stamp"
+    monkeypatch.setattr("rembrandt.render.render_from_config", fake_render_from_config)
+    monkeypatch.setattr("rembrandt.render.write_yolo_dataset", fake_write_yolo_dataset)
+    run_dir, data_yaml = render(config_path)
+
+    assert run_dir == tmp_path / "out" / "stamp"
+    assert data_yaml == tmp_path / "out" / "stamp" / "dataset" / "data.yaml"
     assert captured["config_path"] == config_path
     assert captured["cfg"].camera.n == 1
+    assert captured["frames_only"] is False
 
 
 @pytest.mark.bpy
-def test_render_smoke_writes_frames(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_smoke_writes_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pytest.importorskip("bpy")
     monkeypatch.chdir(PROJECT_ROOT)
 
@@ -422,12 +441,80 @@ def test_render_smoke_writes_frames(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
     dump_config(cfg, config_path)
 
-    output_dir = render(config_path)
-    frames = sorted(output_dir.glob("frame_*.png"))
+    run_dir, data_yaml = render(config_path)
 
-    assert output_dir.is_dir()
-    assert len(frames) == 2
-    assert all(frame.stat().st_size > 0 for frame in frames)
+    assert run_dir.is_dir()
+    assert data_yaml is not None
+    assert data_yaml.is_file()
+    train_images = list((run_dir / "dataset" / "images" / "train").glob("*.png"))
+    val_images = list((run_dir / "dataset" / "images" / "val").glob("*.png"))
+    assert len(train_images) + len(val_images) == 2
+    assert (run_dir / "dataset" / "labels" / "train").is_dir()
+
+
+def test_render_from_config_frames_only_skips_labels(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 2, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=32),
+        Path(path),
+    )[1]
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="frames-only",
+        frames_only=True,
+    )
+
+    assert list(output_dir.glob("frame_*.txt")) == []
+    scene.render.assert_any_call(
+        output_dir / "frame_0000.png",
+        resolution=(32, 32),
+        engine="EEVEE",
+        samples=1,
+        transparent_film=False,
+    )
+
+
+def test_render_from_config_labels_disabled_uses_opaque_film(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 1, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+        labels={"enabled": False},
+    )
+    dump_config(cfg, config_path)
+
+    scene = MagicMock()
+    scene.render.side_effect = lambda path, **kwargs: Path(path)
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="no-labels",
+    )
+
+    assert list(output_dir.glob("frame_*.txt")) == []
+    scene.render.assert_called_once_with(
+        output_dir / "frame_0000.png",
+        resolution=(32, 32),
+        engine="EEVEE",
+        samples=1,
+        transparent_film=False,
+    )
 
 
 @pytest.mark.bpy

@@ -72,6 +72,8 @@ export type PreviewPoses = {
 export type ObjectConfig = {
   path: string;
   up_axis?: SourceUpAxis;
+  class_name?: string;
+  class_id?: number;
 };
 
 export type CameraConfig = {
@@ -103,12 +105,19 @@ export type RenderConfig = {
 export type OutputConfig = {
   dir?: string;
   train_val_split?: number;
+  split_seed?: number | null;
 };
 
 export type BackgroundConfig = {
   mode?: BackgroundMode;
   image_dir?: string | null;
   seed?: number | null;
+  color?: Vec3;
+};
+
+export type LabelsConfig = {
+  enabled?: boolean;
+  min_visible_pixels?: number;
 };
 
 export type LightRandomizationConfig = {
@@ -133,6 +142,7 @@ export type RembrandtConfig = {
   output?: OutputConfig;
   background?: BackgroundConfig;
   light_randomization?: LightRandomizationConfig;
+  labels?: LabelsConfig;
 };
 
 export type SaveConfigResponse = {

@@ -100,9 +100,15 @@ def test_config_defaults_applied() -> None:
     assert cfg.render.samples == 32
     assert cfg.output.dir == "output"
     assert cfg.output.train_val_split == 0.8
+    assert cfg.output.split_seed is None
+    assert cfg.object.class_name == "object"
+    assert cfg.object.class_id == 0
+    assert cfg.labels.enabled is True
+    assert cfg.labels.min_visible_pixels == 25
     assert cfg.background.mode == "none"
     assert cfg.background.image_dir is None
     assert cfg.background.seed is None
+    assert cfg.background.color == (0.05, 0.05, 0.05)
     assert cfg.light_randomization.mode == "static"
     assert cfg.light_randomization.count_range == (1, 3)
     assert cfg.light_randomization.light_types == ["POINT", "SUN", "AREA"]
@@ -240,6 +246,27 @@ def test_light_randomization_config_rejects_invalid(
     base.update(light_kwargs)
     with pytest.raises(ValidationError, match=message):
         LightRandomizationConfig.model_validate(base)
+
+
+def test_object_config_rejects_negative_class_id() -> None:
+    with pytest.raises(ValidationError, match="class_id"):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH, "class_id": -1},
+                "camera": {"n": 1},
+            }
+        )
+
+
+def test_labels_config_rejects_negative_min_visible_pixels() -> None:
+    with pytest.raises(ValidationError, match="min_visible_pixels"):
+        RembrandtConfig.model_validate(
+            {
+                "object": {"path": SAMPLE_OBJECT_PATH},
+                "camera": {"n": 1},
+                "labels": {"min_visible_pixels": -1},
+            }
+        )
 
 
 def test_object_config_rejects_invalid_up_axis() -> None:

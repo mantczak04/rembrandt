@@ -24,6 +24,8 @@ class ObjectConfig(BaseModel):
 
     path: str
     up_axis: SourceUpAxis = "Z"
+    class_name: str = "object"
+    class_id: int = Field(default=0, ge=0)
 
 
 class CameraConfig(BaseModel):
@@ -70,10 +72,11 @@ class RenderConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    """Dataset output layout (``train_val_split`` reserved for a later phase)."""
+    """Dataset output layout."""
 
     dir: str = "output"
     train_val_split: float = Field(default=0.8, gt=0.0, lt=1.0)
+    split_seed: int | None = None
 
 
 class LightRandomizationConfig(BaseModel):
@@ -123,12 +126,20 @@ class BackgroundConfig(BaseModel):
     mode: Literal["none", "image"] = "none"
     image_dir: str | None = None
     seed: int | None = None
+    color: tuple[float, float, float] = (0.05, 0.05, 0.05)
 
     @model_validator(mode="after")
     def _check_image_dir(self) -> Self:
         if self.mode == "image" and not self.image_dir:
             raise ValueError("background.image_dir is required when mode is 'image'")
         return self
+
+
+class LabelsConfig(BaseModel):
+    """YOLO label generation from rendered alpha masks."""
+
+    enabled: bool = True
+    min_visible_pixels: int = Field(default=25, ge=0)
 
 
 class RembrandtConfig(BaseModel):
@@ -151,6 +162,7 @@ class RembrandtConfig(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
     background: BackgroundConfig = Field(default_factory=BackgroundConfig)
     light_randomization: LightRandomizationConfig = Field(default_factory=LightRandomizationConfig)
+    labels: LabelsConfig = Field(default_factory=LabelsConfig)
 
 
 def load_config(path: str | Path) -> RembrandtConfig:

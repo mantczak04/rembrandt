@@ -8,15 +8,25 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
+import numpy as np
 import typer
+from PIL import Image
 
+from rembrandt.annotations import (
+    bbox_from_mask,
+    mask_from_alpha,
+    visible_pixel_count,
+    yolo_line,
+)
 from rembrandt.backgrounds import (
     apply_background_to_frame,
     choose_background,
+    composite_over_color,
     index_backgrounds,
 )
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
+from rembrandt.dataset import write_yolo_dataset
 from rembrandt.light_poses import sample_light_rig
 from rembrandt.scene import Scene
 
@@ -105,12 +115,40 @@ def resolve_background_dir(config_path: Path, image_dir: str) -> Path:
     return path.resolve()
 
 
+def _write_label_file(
+    label_path: Path,
+    *,
+    class_id: int,
+    bbox_px: tuple[int, int, int, int] | None,
+    visible_pixels: int,
+    min_visible_pixels: int,
+    width: int,
+    height: int,
+    frame_index: int,
+) -> None:
+    """Write a YOLO label file, using an empty file below the visibility floor."""
+    if bbox_px is None or visible_pixels < min_visible_pixels:
+        label_path.write_text("", encoding="utf-8")
+        if bbox_px is not None and visible_pixels < min_visible_pixels:
+            print(
+                f"Frame {frame_index}: only {visible_pixels} visible pixels "
+                f"(min {min_visible_pixels}); wrote empty label"
+            )
+        return
+
+    label_path.write_text(
+        yolo_line(class_id, bbox_px, width=width, height=height) + "\n",
+        encoding="utf-8",
+    )
+
+
 def render_from_config(
     cfg: RembrandtConfig,
     *,
     config_path: Path,
     scene_factory: Callable[[], Scene] | None = None,
     stamp: str | None = None,
+    frames_only: bool = False,
 ) -> Path:
     """Render frames for a validated config.
 
@@ -119,9 +157,12 @@ def render_from_config(
         config_path: Path to the YAML file (used to resolve relative object paths).
         scene_factory: Optional factory for tests; defaults to ``Scene``.
         stamp: Optional output subdirectory name; defaults to a timestamp.
+        frames_only: When True, skip label files and dataset layout (debugging).
 
     Returns:
-        The directory containing rendered frame PNGs.
+        The directory containing rendered frame PNGs (flat layout when
+        ``frames_only`` is True; otherwise frames are moved into
+        ``dataset/`` by the caller).
     """
     object_path = resolve_object_path(config_path, cfg.object.path)
     poses = sample_camera_poses(**cfg.camera.model_dump())
@@ -151,6 +192,10 @@ def render_from_config(
     scene.add_camera(focal_length=cfg.render.focal_length)
 
     use_background = cfg.background.mode == "image"
+    use_labels = cfg.labels.enabled and not frames_only
+    transparent_film = use_labels or use_background
+    width, height = cfg.render.resolution
+
     background_pool: list[Path] = []
     if use_background:
         assert cfg.background.image_dir is not None
@@ -185,21 +230,53 @@ def render_from_config(
             resolution=cfg.render.resolution,
             engine=cfg.render.engine,
             samples=cfg.render.samples,
-            transparent_film=use_background,
+            transparent_film=transparent_film,
         )
+
         background_record: str | None = None
-        if use_background:
-            background_path = choose_background(
-                background_pool,
-                frame_index=index,
-                seed=cfg.background.seed,
-            )
-            background_record = background_path.name
-            apply_background_to_frame(rendered, background_path)
-            print(
-                f"Rendered frame {index} to {rendered}"
-                f" (background: {background_path.name}){rig_summary}"
-            )
+        if transparent_film:
+            with Image.open(rendered) as frame_image:
+                foreground = np.asarray(frame_image.convert("RGBA"), dtype=np.uint8)
+
+            mask = mask_from_alpha(foreground) if use_labels else None
+            bbox_px = bbox_from_mask(mask) if mask is not None else None
+            visible_pixels = visible_pixel_count(mask) if mask is not None else 0
+
+            if use_background:
+                background_path = choose_background(
+                    background_pool,
+                    frame_index=index,
+                    seed=cfg.background.seed,
+                )
+                background_record = background_path.name
+                apply_background_to_frame(
+                    rendered,
+                    background_path,
+                    foreground_rgba=foreground,
+                )
+                print(
+                    f"Rendered frame {index} to {rendered}"
+                    f" (background: {background_path.name}){rig_summary}"
+                )
+            elif use_labels:
+                composited = composite_over_color(foreground, cfg.background.color)
+                Image.fromarray(composited, mode="RGB").save(rendered, format="PNG")
+                print(f"Rendered frame {index} to {rendered}{rig_summary}")
+            else:
+                print(f"Rendered frame {index} to {rendered}{rig_summary}")
+
+            if use_labels:
+                label_path = output_dir / f"frame_{index:04d}.txt"
+                _write_label_file(
+                    label_path,
+                    class_id=cfg.object.class_id,
+                    bbox_px=bbox_px,
+                    visible_pixels=visible_pixels,
+                    min_visible_pixels=cfg.labels.min_visible_pixels,
+                    width=width,
+                    height=height,
+                    frame_index=index,
+                )
         else:
             print(f"Rendered frame {index} to {rendered}{rig_summary}")
 
@@ -229,18 +306,33 @@ def render_from_config(
     return output_dir
 
 
-def render(config_path: Path) -> Path:
-    """Load a YAML config and render frames.
+def render(config_path: Path, *, frames_only: bool = False) -> tuple[Path, Path | None]:
+    """Load a YAML config and render frames (and optionally a YOLO dataset).
 
     Args:
         config_path: Path to the render config YAML file.
+        frames_only: When True, skip YOLO dataset layout.
 
     Returns:
-        The directory containing rendered frame PNGs.
+        ``(run_dir, data_yaml_path)`` where ``data_yaml_path`` is ``None`` when
+        labeling or dataset layout was skipped.
     """
     path = Path(config_path)
     cfg = load_config(path)
-    return render_from_config(cfg, config_path=path)
+    output_dir = render_from_config(cfg, config_path=path, frames_only=frames_only)
+
+    if frames_only or not cfg.labels.enabled:
+        return output_dir, None
+
+    dataset_dir = output_dir / "dataset"
+    data_yaml = write_yolo_dataset(
+        output_dir,
+        dataset_dir,
+        class_names={cfg.object.class_id: cfg.object.class_name},
+        train_fraction=cfg.output.train_val_split,
+        seed=cfg.output.split_seed,
+    )
+    return output_dir, data_yaml
 
 
 @app.command()
@@ -254,10 +346,21 @@ def render_command(
             help="Path to the render config YAML file.",
         ),
     ],
+    frames_only: Annotated[
+        bool,
+        typer.Option(
+            "--frames-only",
+            help="Render PNG frames only; skip label files and YOLO dataset layout.",
+        ),
+    ] = False,
 ) -> None:
     """Render dataset frames from a YAML configuration file."""
-    output_dir = render(config_path)
-    typer.echo(f"Finished rendering to {output_dir}")
+    output_dir, data_yaml = render(config_path, frames_only=frames_only)
+    if data_yaml is not None:
+        typer.echo(f"Finished rendering dataset to {data_yaml.parent}")
+        typer.echo(str(data_yaml))
+    else:
+        typer.echo(f"Finished rendering to {output_dir}")
 
 
 def main() -> None:

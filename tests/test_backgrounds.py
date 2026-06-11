@@ -144,6 +144,36 @@ def test_composite_over_shape_mismatch_raises() -> None:
         composite_over(foreground, background)
 
 
+def test_composite_over_color_matches_flat_background() -> None:
+    from rembrandt.backgrounds import composite_over_color
+
+    foreground = np.zeros((2, 2, 4), dtype=np.uint8)
+    foreground[0, 0] = (255, 0, 0, 255)
+    foreground[0, 1] = (255, 0, 0, 0)
+
+    result = composite_over_color(foreground, (0.05, 0.05, 0.05))
+
+    assert result.shape == (2, 2, 3)
+    assert tuple(result[0, 1]) == (13, 13, 13)
+    assert tuple(result[0, 0]) == (255, 0, 0)
+
+
+def test_apply_background_to_frame_accepts_preloaded_foreground(tmp_path: Path) -> None:
+    frame_path = tmp_path / "frame.png"
+    background_path = tmp_path / "bg.png"
+    foreground = np.zeros((32, 32, 4), dtype=np.uint8)
+    foreground[:, :] = (255, 0, 0, 255)
+    foreground[0, 0] = (0, 0, 0, 0)
+    _write_solid_image(background_path, (64, 64), (0, 255, 0))
+
+    apply_background_to_frame(frame_path, background_path, foreground_rgba=foreground)
+
+    with Image.open(frame_path) as result:
+        assert result.mode == "RGB"
+        assert result.getpixel((0, 0)) == (0, 255, 0)
+        assert result.getpixel((16, 16)) == (255, 0, 0)
+
+
 def test_apply_background_to_frame_round_trip(tmp_path: Path) -> None:
     frame_path = tmp_path / "frame.png"
     background_path = tmp_path / "bg.png"
