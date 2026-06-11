@@ -81,7 +81,7 @@ def test_add_light_after_clear_renders(tmp_path: Path) -> None:
 
     scene = Scene()
     bpy.ops.mesh.primitive_cube_add(size=1.0)
-    scene.target = bpy.context.object
+    scene.targets = [bpy.context.object]
     scene.add_light()
     scene.clear_lights()
     scene.add_light(location=(3.0, 3.0, 5.0), look_at=(0.0, 0.0, 0.0))

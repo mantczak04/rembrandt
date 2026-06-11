@@ -15,12 +15,35 @@ from rembrandt.camera.orientation import (
     rotation_euler_from_forward,
 )
 from rembrandt.convention import SourceUpAxis, obj_import_axes
-from rembrandt.errors import ModelFileNotFoundError
+from rembrandt.errors import ModelFileNotFoundError, RenderEngineUnavailableError
 from rembrandt.light_poses import DEFAULT_LIGHT_ENERGY
 from rembrandt.obj_assets import normalize_obj_mtllibs, resolve_texture_file
 
 _CAMERA_LOOK_AT_ERROR = "Camera location and look_at cannot be the same point."
 _LIGHT_LOOK_AT_ERROR = "Light location and look_at cannot be the same point."
+_EEVEE_GPU_FAILURE_HINTS = (
+    "gpu",
+    "egl",
+    "opengl",
+    "gl context",
+    "vulkan",
+    "no display",
+    "cannot create",
+    "failed to initialize",
+)
+
+
+def eevee_failure_is_gpu_context(exc: BaseException) -> bool:
+    """Return whether an EEVEE render failure looks like a missing GPU context.
+
+    Args:
+        exc: Exception raised during ``bpy.ops.render.render()`` with EEVEE.
+
+    Returns:
+        True when the error message suggests a GPU / graphics-context problem.
+    """
+    message = str(exc).casefold()
+    return any(hint in message for hint in _EEVEE_GPU_FAILURE_HINTS)
 
 
 class Scene:
@@ -39,7 +62,7 @@ class Scene:
                 on init. Defaults to True since Rembrandt always renders
                 from a fresh scene.
         """
-        self.target: bpy.types.Object | None = None
+        self.targets: list[bpy.types.Object] = []
         self.camera: bpy.types.Object | None = None
         self.lights: list[bpy.types.Object] = []
         self._camera_requested_location: tuple[float, float, float] | None = None
@@ -53,7 +76,7 @@ class Scene:
         """Remove all objects from the scene and reset tracked references."""
         for obj in list(bpy.data.objects):
             bpy.data.objects.remove(obj, do_unlink=True)
-        self.target = None
+        self.targets = []
         self.camera = None
         self.lights = []
         self._camera_requested_location = None
@@ -105,10 +128,8 @@ class Scene:
         if not imported:
             raise RuntimeError(f"No mesh objects found in {path}")
 
-        # If the .obj contains multiple meshes, take the first for now.
-        # Multi-mesh handling can come later if a real .obj forces the issue.
-        self.target = imported[0]
-        return self.target
+        self.targets = imported
+        return imported[0]
 
     @staticmethod
     def _image_has_pixels(image: bpy.types.Image) -> bool:
@@ -246,13 +267,12 @@ class Scene:
         pixel_aspect_y: float,
     ) -> None:
         """Move the camera back along its view direction until the target fits."""
-        if self.target is None:
+        if not self.targets:
             return
 
         bpy.context.view_layer.update()
 
-        corners = [self.target.matrix_world @ Vector(corner) for corner in self.target.bound_box]
-
+        corners = self._target_world_corners()
         radius = max((corner - look_at).length for corner in corners)
 
         requested_direction = look_at - Vector(requested_location)
@@ -386,6 +406,7 @@ class Scene:
 
         Raises:
             RuntimeError: If no camera has been added to the scene.
+            RenderEngineUnavailableError: If EEVEE cannot acquire a GPU context.
         """
         if self.camera is None:
             raise RuntimeError("No camera in the scene. Call add_camera() before render().")
@@ -420,10 +441,22 @@ class Scene:
 
         self._refit_camera_for_current_render_settings()
 
-        bpy.ops.render.render()
+        try:
+            bpy.ops.render.render()
+        except RuntimeError as exc:
+            if engine == "EEVEE" and eevee_failure_is_gpu_context(exc):
+                raise RenderEngineUnavailableError() from exc
+            raise
         bpy.data.images["Render Result"].save_render(filepath=str(output))
 
         return output
+
+    def _target_world_corners(self) -> list[Vector]:
+        """Return world-space bound-box corners for every imported target mesh."""
+        corners: list[Vector] = []
+        for target in self.targets:
+            corners.extend(target.matrix_world @ Vector(corner) for corner in target.bound_box)
+        return corners
 
     def center_target(self) -> None:
         """Translate the target so its bounding-box center is at (0, 0, 0).
@@ -437,13 +470,26 @@ class Scene:
         Raises:
             RuntimeError: If no target has been loaded.
         """
-        if self.target is None:
+        if not self.targets:
             raise RuntimeError("No target loaded. Call load_object() first.")
 
-        world_corners = [
-            self.target.matrix_world @ Vector(corner) for corner in self.target.bound_box
-        ]
-        center = sum(world_corners, Vector()) / 8
+        world_corners = self._target_world_corners()
+        min_corner = Vector(
+            (
+                min(corner.x for corner in world_corners),
+                min(corner.y for corner in world_corners),
+                min(corner.z for corner in world_corners),
+            )
+        )
+        max_corner = Vector(
+            (
+                max(corner.x for corner in world_corners),
+                max(corner.y for corner in world_corners),
+                max(corner.z for corner in world_corners),
+            )
+        )
+        center = (min_corner + max_corner) / 2
 
-        self.target.location -= center
+        for target in self.targets:
+            target.location -= center
         bpy.context.view_layer.update()

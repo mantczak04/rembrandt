@@ -62,8 +62,15 @@ rembrandt-render ./configs/dataset.yaml
 ```
 
 Frames are written under `<output.dir>/<timestamp>/frame_XXXX.png`. By default, `output.dir` is `output`.
+Each run also writes `<output.dir>/<timestamp>/run.json` with the resolved config, object path, and
+per-frame camera/light/background metadata for debugging and downstream dataset tooling.
 
-Object paths in the YAML may be absolute, relative to the config file, or relative to the current working directory.
+`output.dir` may be absolute, relative to the config file, or relative to the current working
+directory (same resolution order as object paths). Object paths follow the same rules.
+
+The default render engine is `EEVEE`, which requires a GPU when running headless `bpy`. On
+CPU-only machines (typical CI runners and many servers), use `render.engine: CYCLES` instead.
+Rembrandt raises an explicit error rather than silently switching engines mid-dataset.
 
 ## Config Format
 

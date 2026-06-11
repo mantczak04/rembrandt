@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import datetime
+import json
+from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
@@ -53,6 +55,31 @@ def resolve_object_path(config_path: Path, object_path: str) -> Path:
     return path.resolve()
 
 
+def resolve_output_dir(config_path: Path, output_dir: str) -> Path:
+    """Resolve an output directory relative to the config file or working directory.
+
+    Args:
+        config_path: Path to the YAML config file.
+        output_dir: Output directory from the config (absolute or relative).
+
+    Returns:
+        Resolved filesystem path to the output root directory.
+    """
+    path = Path(output_dir)
+    if path.is_absolute():
+        return path.resolve()
+
+    relative_to_config = (config_path.parent / path).resolve()
+    if relative_to_config.is_dir():
+        return relative_to_config
+
+    relative_to_cwd = (Path.cwd() / path).resolve()
+    if relative_to_cwd.is_dir():
+        return relative_to_cwd
+
+    return relative_to_config
+
+
 def resolve_background_dir(config_path: Path, image_dir: str) -> Path:
     """Resolve a background image directory relative to the config or CWD.
 
@@ -99,8 +126,10 @@ def render_from_config(
     object_path = resolve_object_path(config_path, cfg.object.path)
     poses = sample_camera_poses(**cfg.camera.model_dump())
     run_stamp = stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_dir = Path(cfg.output.dir) / run_stamp
+    output_root = resolve_output_dir(config_path, cfg.output.dir)
+    output_dir = output_root / run_stamp
     output_dir.mkdir(parents=True, exist_ok=True)
+    frame_records: list[dict[str, Any]] = []
 
     scene = scene_factory() if scene_factory is not None else Scene()
     scene.load_object(object_path, up_axis=cfg.object.up_axis)
@@ -130,12 +159,14 @@ def render_from_config(
 
     for index, pose in enumerate(poses):
         rig_summary = ""
+        light_rig_record: list[dict[str, Any]] | None = None
         if randomize_lights:
             scene.clear_lights()
             rig = sample_light_rig(
                 frame_index=index,
                 **cfg.light_randomization.model_dump(exclude={"mode"}),
             )
+            light_rig_record = [asdict(sampled) for sampled in rig]
             rig_summary = f" lights=[{', '.join(sampled.light_type for sampled in rig)}]"
             for sampled in rig:
                 scene.add_light(
@@ -156,12 +187,14 @@ def render_from_config(
             samples=cfg.render.samples,
             transparent_film=use_background,
         )
+        background_record: str | None = None
         if use_background:
             background_path = choose_background(
                 background_pool,
                 frame_index=index,
                 seed=cfg.background.seed,
             )
+            background_record = background_path.name
             apply_background_to_frame(rendered, background_path)
             print(
                 f"Rendered frame {index} to {rendered}"
@@ -169,6 +202,29 @@ def render_from_config(
             )
         else:
             print(f"Rendered frame {index} to {rendered}{rig_summary}")
+
+        frame_record: dict[str, Any] = {
+            "frame": index,
+            "camera_pose": {
+                "location": list(pose.location),
+                "look_at": list(pose.look_at),
+            },
+        }
+        if light_rig_record is not None:
+            frame_record["light_rig"] = light_rig_record
+        if background_record is not None:
+            frame_record["background"] = background_record
+        frame_records.append(frame_record)
+
+    run_metadata = {
+        "config": cfg.model_dump(mode="json"),
+        "resolved_object_path": str(object_path),
+        "frames": frame_records,
+    }
+    (output_dir / "run.json").write_text(
+        json.dumps(run_metadata, indent=2),
+        encoding="utf-8",
+    )
 
     return output_dir
 

@@ -141,9 +141,13 @@ def test_chess_board_object_z_up_axis_lands_on_world_z() -> None:
     assert np.argmax(extents) == 2
 
     scene = _load_scene_object(obj_path, up_axis="Z")
-    assert scene.target is not None
+    assert scene.targets
     scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
+        [
+            [*(obj.matrix_world @ vertex.co)]
+            for obj in scene.targets
+            for vertex in obj.data.vertices
+        ],
         dtype=np.float64,
     )
     scene_extents = scene_vertices.max(axis=0) - scene_vertices.min(axis=0)
@@ -171,9 +175,13 @@ def _assert_orient_and_center_matches_bpy_import(
     pure_vertices, _bbox = orient_and_center(raw_vertices, up_axis=up_axis)
 
     scene = _load_scene_object(obj_path, up_axis=up_axis)
-    assert scene.target is not None
+    assert scene.targets
     scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
+        [
+            [*(obj.matrix_world @ vertex.co)]
+            for obj in scene.targets
+            for vertex in obj.data.vertices
+        ],
         dtype=np.float64,
     )
     _assert_vertex_sets_allclose(pure_vertices, scene_vertices)

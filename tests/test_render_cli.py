@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -17,6 +18,7 @@ from rembrandt.render import (
     render_from_config,
     resolve_background_dir,
     resolve_object_path,
+    resolve_output_dir,
 )
 from tests.test_paths import PROJECT_ROOT, sample_object_path, sample_object_up_axis
 
@@ -37,6 +39,34 @@ def test_resolve_object_path_relative_to_config_directory(tmp_path: Path) -> Non
     config_path.write_text("object:\n  path: model.obj\n", encoding="utf-8")
 
     assert resolve_object_path(config_path, "model.obj") == obj.resolve()
+
+
+def test_resolve_output_dir_absolute(tmp_path: Path) -> None:
+    config_path = tmp_path / "cfg.yaml"
+    config_path.write_text("output:\n  dir: /tmp/out\n", encoding="utf-8")
+    assert resolve_output_dir(config_path, "/tmp/out") == Path("/tmp/out").resolve()
+
+
+def test_resolve_output_dir_relative_to_config_directory(tmp_path: Path) -> None:
+    config_path = tmp_path / "cfg.yaml"
+    config_path.write_text("output:\n  dir: frames\n", encoding="utf-8")
+    assert resolve_output_dir(config_path, "frames") == (tmp_path / "frames").resolve()
+
+
+def test_resolve_output_dir_prefers_existing_directory_at_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "cfg.yaml"
+    config_path.write_text("output:\n  dir: shared\n", encoding="utf-8")
+
+    cwd_dir = tmp_path / "shared"
+    cwd_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_output_dir(config_path, "shared") == cwd_dir.resolve()
 
 
 def test_render_from_config_wires_scene(tmp_path: Path) -> None:
@@ -85,6 +115,12 @@ def test_render_from_config_wires_scene(tmp_path: Path) -> None:
         samples=4,
         transparent_film=False,
     )
+
+    run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_metadata["resolved_object_path"] == str(sample_object_path().resolve())
+    assert len(run_metadata["frames"]) == 3
+    assert run_metadata["frames"][0]["camera_pose"]["location"]
+    assert "light_rig" not in run_metadata["frames"][0]
 
 
 def test_render_from_config_random_lights_call_order(tmp_path: Path) -> None:

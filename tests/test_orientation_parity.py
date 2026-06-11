@@ -15,6 +15,24 @@ from tests.test_paths import chess_board_object_path, sample_object_path, sample
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_y_up.obj"
 Z_UP_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_z_up.obj"
+TWO_CUBE_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "two_offset_cubes.obj"
+
+
+def _scene_vertices(scene: Scene) -> np.ndarray:
+    return np.array(
+        [
+            [*(obj.matrix_world @ vertex.co)]
+            for obj in scene.targets
+            for vertex in obj.data.vertices
+        ],
+        dtype=np.float64,
+    )
+
+
+def _scene_union_bbox(scene: Scene) -> np.ndarray:
+    corners = scene._target_world_corners()
+    coords = np.array([[corner.x, corner.y, corner.z] for corner in corners], dtype=np.float64)
+    return np.stack((coords.min(axis=0), coords.max(axis=0)))
 
 
 @pytest.mark.bpy
@@ -32,11 +50,8 @@ def test_preview_mesh_matches_scene_geometry() -> None:
     scene = Scene()
     scene.load_object(obj_path, up_axis=sample_object_up_axis())
     scene.center_target()
-    assert scene.target is not None
-    scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
-        dtype=np.float64,
-    )
+    assert scene.targets
+    scene_vertices = _scene_vertices(scene)
 
     _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
 
@@ -52,11 +67,8 @@ def test_preview_mesh_matches_scene_geometry_on_y_up_fixture() -> None:
     scene = Scene()
     scene.load_object(FIXTURE_OBJ, up_axis="Y")
     scene.center_target()
-    assert scene.target is not None
-    scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
-        dtype=np.float64,
-    )
+    assert scene.targets
+    scene_vertices = _scene_vertices(scene)
 
     _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
 
@@ -72,11 +84,8 @@ def test_preview_mesh_matches_scene_geometry_on_z_up_fixture() -> None:
     scene = Scene()
     scene.load_object(Z_UP_FIXTURE_OBJ, up_axis="Z")
     scene.center_target()
-    assert scene.target is not None
-    scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
-        dtype=np.float64,
-    )
+    assert scene.targets
+    scene_vertices = _scene_vertices(scene)
 
     _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
 
@@ -99,10 +108,45 @@ def test_preview_mesh_matches_scene_geometry_on_chess_board_object_z_up() -> Non
     scene = Scene()
     scene.load_object(obj_path, up_axis="Z")
     scene.center_target()
-    assert scene.target is not None
-    scene_vertices = np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
-        dtype=np.float64,
-    )
+    assert scene.targets
+    scene_vertices = _scene_vertices(scene)
 
     _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+
+
+@pytest.mark.bpy
+def test_multi_mesh_union_bbox_centered_at_origin_and_matches_preview() -> None:
+    """OBJ geometry with spatially separated parts matches preview union bounds."""
+    pytest.importorskip("bpy")
+
+    preview = load_preview_mesh(TWO_CUBE_FIXTURE_OBJ, up_axis="Z")
+    preview_bbox = np.asarray(preview.bbox, dtype=np.float64)
+
+    scene = Scene()
+    scene.load_object(TWO_CUBE_FIXTURE_OBJ, up_axis="Z")
+    assert scene.targets
+    scene.center_target()
+
+    scene_bbox = _scene_union_bbox(scene)
+    np.testing.assert_allclose(scene_bbox, preview_bbox, atol=1e-5)
+    np.testing.assert_allclose(scene_bbox.mean(axis=0), 0.0, atol=1e-5)
+
+
+@pytest.mark.bpy
+def test_multiple_target_objects_center_on_union_bbox() -> None:
+    """Separate mesh objects are translated together to the union bbox center."""
+    bpy = pytest.importorskip("bpy")
+
+    scene = Scene()
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+    cube_a = bpy.context.object
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(3.0, 0.0, 0.0))
+    cube_b = bpy.context.object
+    scene.targets = [cube_a, cube_b]
+
+    scene.center_target()
+
+    scene_bbox = _scene_union_bbox(scene)
+    np.testing.assert_allclose(scene_bbox.mean(axis=0), 0.0, atol=1e-5)
+    np.testing.assert_allclose(scene_bbox[0], [-2.0, -0.5, -0.5], atol=1e-5)
+    np.testing.assert_allclose(scene_bbox[1], [2.0, 0.5, 0.5], atol=1e-5)

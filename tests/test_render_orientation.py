@@ -23,9 +23,13 @@ Z_UP_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "asymmetric_z_up.obj"
 
 
 def _scene_vertices(scene: Scene) -> np.ndarray:
-    assert scene.target is not None
+    assert scene.targets
     return np.array(
-        [[*(scene.target.matrix_world @ vertex.co)] for vertex in scene.target.data.vertices],
+        [
+            [*(obj.matrix_world @ vertex.co)]
+            for obj in scene.targets
+            for vertex in obj.data.vertices
+        ],
         dtype=np.float64,
     )
 

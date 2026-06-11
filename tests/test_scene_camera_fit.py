@@ -14,7 +14,7 @@ def test_scene_refits_camera_after_render_resolution_changes() -> None:
     render.resolution_y = 640
 
     bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0.0, 0.0, 0.0))
-    scene.target = bpy.context.object
+    scene.targets = [bpy.context.object]
 
     camera = scene.add_camera(
         location=(0.0, 0.0, 2.0),
