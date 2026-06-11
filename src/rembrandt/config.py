@@ -24,6 +24,15 @@ class ObjectConfig(BaseModel):
 
     path: str
     up_axis: SourceUpAxis = "Z"
+    normalize: bool = Field(
+        default=True,
+        description=(
+            "Scale the object so its union bounding-box half-diagonal is 1.0 world "
+            "unit after orient and center. Distance ranges, static light/camera "
+            "positions, and default light energy assume normalized units; disable "
+            "only when the config uses the asset's native scale."
+        ),
+    )
     class_name: str = "object"
     class_id: int = Field(default=0, ge=0)
 

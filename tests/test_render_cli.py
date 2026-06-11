@@ -26,6 +26,7 @@ from tests.test_paths import PROJECT_ROOT, sample_object_path, sample_object_up_
 def _mock_render_scene() -> MagicMock:
     scene = MagicMock()
     scene.target_radius_about.return_value = 1.0
+    scene.normalize_target.return_value = 1.0
     return scene
 
 
@@ -73,6 +74,67 @@ def test_resolve_output_dir_prefers_existing_directory_at_cwd(
     monkeypatch.chdir(tmp_path)
 
     assert resolve_output_dir(config_path, "shared") == cwd_dir.resolve()
+
+
+def test_render_from_config_records_normalization_scale(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path()), "up_axis": sample_object_up_axis()},
+        camera={"n": 1, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    scene = _mock_render_scene()
+    scene.normalize_target.return_value = 0.5
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=32),
+        Path(path),
+    )[1]
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="normalize-meta",
+    )
+
+    scene.normalize_target.assert_called_once()
+    run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_metadata["normalization_scale"] == 0.5
+
+
+def test_render_from_config_skips_normalize_when_disabled(tmp_path: Path) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={
+            "path": str(sample_object_path()),
+            "up_axis": sample_object_up_axis(),
+            "normalize": False,
+        },
+        camera={"n": 1, "seed": 1},
+        render={"resolution": (32, 32), "samples": 1},
+        output={"dir": str(tmp_path / "frames")},
+    )
+    dump_config(cfg, config_path)
+
+    scene = _mock_render_scene()
+    scene.render.side_effect = lambda path, **kwargs: (
+        _write_rgba_frame(Path(path), size=32),
+        Path(path),
+    )[1]
+
+    output_dir = render_from_config(
+        load_config(config_path),
+        config_path=config_path,
+        scene_factory=lambda: scene,
+        stamp="no-normalize",
+    )
+
+    scene.normalize_target.assert_not_called()
+    run_metadata = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_metadata["normalization_scale"] is None
 
 
 def test_render_from_config_wires_scene(tmp_path: Path) -> None:

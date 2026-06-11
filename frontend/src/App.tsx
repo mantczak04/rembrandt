@@ -129,16 +129,17 @@ export default function App() {
     }
 
     const upAxis = config.object.up_axis ?? "Z";
+    const normalize = config.object.normalize ?? true;
     setLoadingMesh(true);
     setMeshError(null);
     setPoses(null);
     try {
-      const nextMesh = await fetchMesh(path, upAxis);
+      const nextMesh = await fetchMesh(path, upAxis, normalize);
       setMesh(nextMesh);
       let cameraForPoses = config.camera;
       setConfig((current) => {
         cameraForPoses = current.camera;
-        return { ...current, object: { path, up_axis: upAxis } };
+        return { ...current, object: { path, up_axis: upAxis, normalize } };
       });
       await refreshPoses(nextMesh, cameraForPoses);
     } catch (error) {
@@ -153,16 +154,71 @@ export default function App() {
     } finally {
       setLoadingMesh(false);
     }
-  }, [config.camera, config.object.up_axis, objectPathInput, refreshPoses]);
+  }, [config.camera, config.object.normalize, config.object.up_axis, objectPathInput, refreshPoses]);
 
-  const handleObjectUpAxisChange = useCallback((up_axis: SourceUpAxis) => {
-    setConfig((current) => ({
-      ...current,
-      object: { ...current.object, up_axis },
-    }));
-    setMesh(null);
-    setPoses(null);
-  }, []);
+  const reloadMesh = useCallback(
+    async (path: string, upAxis: SourceUpAxis, normalize: boolean) => {
+      setLoadingMesh(true);
+      setMeshError(null);
+      setPoses(null);
+      try {
+        const nextMesh = await fetchMesh(path, upAxis, normalize);
+        setMesh(nextMesh);
+        let cameraForPoses = config.camera;
+        setConfig((current) => {
+          cameraForPoses = current.camera;
+          return { ...current, object: { ...current.object, up_axis: upAxis, normalize } };
+        });
+        await refreshPoses(nextMesh, cameraForPoses);
+      } catch (error) {
+        setMesh(null);
+        if (error instanceof ApiError) {
+          setMeshError(error.message);
+        } else if (error instanceof Error) {
+          setMeshError(error.message);
+        } else {
+          setMeshError("Failed to load mesh");
+        }
+      } finally {
+        setLoadingMesh(false);
+      }
+    },
+    [config.camera, refreshPoses],
+  );
+
+  const handleObjectUpAxisChange = useCallback(
+    (up_axis: SourceUpAxis) => {
+      setConfig((current) => ({
+        ...current,
+        object: { ...current.object, up_axis },
+      }));
+      const path = objectPathInput.trim();
+      if (path && mesh !== null) {
+        void reloadMesh(path, up_axis, config.object.normalize ?? true);
+        return;
+      }
+      setMesh(null);
+      setPoses(null);
+    },
+    [config.object.normalize, mesh, objectPathInput, reloadMesh],
+  );
+
+  const handleObjectNormalizeChange = useCallback(
+    (normalize: boolean) => {
+      setConfig((current) => ({
+        ...current,
+        object: { ...current.object, normalize },
+      }));
+      const path = objectPathInput.trim();
+      if (path && mesh !== null) {
+        void reloadMesh(path, config.object.up_axis ?? "Z", normalize);
+        return;
+      }
+      setMesh(null);
+      setPoses(null);
+    },
+    [config.object.up_axis, mesh, objectPathInput, reloadMesh],
+  );
 
   const handleCameraChange = useCallback(
     (camera: CameraConfig) => {
@@ -220,6 +276,7 @@ export default function App() {
               posesError={posesError}
               onObjectPathInputChange={setObjectPathInput}
               onObjectUpAxisChange={handleObjectUpAxisChange}
+              onObjectNormalizeChange={handleObjectNormalizeChange}
               onLoadMesh={() => void handleLoadMesh()}
               onCameraChange={handleCameraChange}
               onConfigChange={handleConfigChange}

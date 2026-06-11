@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from rembrandt.convention import bounding_radius_from_bbox
 from rembrandt.errors import ModelFileNotFoundError
 from rembrandt.preview.mesh import PreviewMesh, load_preview_mesh
 from tests.test_paths import sample_object_path, sample_object_up_axis
@@ -40,9 +41,52 @@ def test_load_preview_mesh_positions_match_orient_and_center() -> None:
         up_axis=sample_object_up_axis(),
     )
 
-    mesh = load_preview_mesh(sample_object_path(), up_axis=sample_object_up_axis())
+    mesh = load_preview_mesh(
+        sample_object_path(),
+        up_axis=sample_object_up_axis(),
+        normalize=False,
+    )
     positions = np.asarray(mesh.positions, dtype=np.float64).reshape(-1, 3)
     np.testing.assert_allclose(positions, expected, atol=1e-5)
+
+
+def test_load_preview_mesh_normalize_true_yields_unit_radius(tmp_path: Path) -> None:
+    obj_path = tmp_path / "scaled_box.obj"
+    obj_path.write_text(
+        "\n".join(
+            [
+                "v 0 0 0",
+                "v 4 4 4",
+                "f 1 2 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    mesh = load_preview_mesh(obj_path, normalize=True)
+    bbox = np.asarray(mesh.bbox, dtype=np.float64)
+    assert bounding_radius_from_bbox(bbox) == pytest.approx(1.0, abs=1e-12)
+
+
+def test_load_preview_mesh_normalize_false_preserves_extent(tmp_path: Path) -> None:
+    obj_path = tmp_path / "scaled_box.obj"
+    obj_path.write_text(
+        "\n".join(
+            [
+                "v 0 0 0",
+                "v 4 4 4",
+                "f 1 2 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    normalized = load_preview_mesh(obj_path, normalize=True)
+    raw = load_preview_mesh(obj_path, normalize=False)
+    normalized_radius = bounding_radius_from_bbox(np.asarray(normalized.bbox, dtype=np.float64))
+    raw_radius = bounding_radius_from_bbox(np.asarray(raw.bbox, dtype=np.float64))
+    assert normalized_radius == pytest.approx(1.0, abs=1e-12)
+    assert raw_radius > normalized_radius
 
 
 def test_load_preview_mesh_missing_path(tmp_path: Path) -> None:

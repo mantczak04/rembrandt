@@ -11,6 +11,8 @@ from rembrandt.convention import (
     OBJ_IMPORT_FORWARD_AXIS,
     OBJ_IMPORT_UP_AXIS,
     SourceUpAxis,
+    bounding_radius_from_bbox,
+    normalize_scale,
     obj_import_axes,
     orient_and_center,
 )
@@ -78,6 +80,35 @@ def test_orient_and_center_preserves_z_up() -> None:
     assert bbox[1, 2] - bbox[0, 2] == pytest.approx(2.0)
     assert bbox[0, 1] == pytest.approx(bbox[1, 1])
     np.testing.assert_allclose(centered[:, 2], [-1.0, 1.0], atol=1e-12)
+
+
+def test_bounding_radius_from_bbox_half_diagonal() -> None:
+    bbox = np.array([[-1.0, -2.0, -3.0], [1.0, 2.0, 3.0]], dtype=np.float64)
+    assert bounding_radius_from_bbox(bbox) == pytest.approx(np.sqrt(14.0))
+
+
+def test_normalize_scale_unit_radius() -> None:
+    vertices = np.array(
+        [
+            [-2.0, -2.0, -2.0],
+            [2.0, 2.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    bbox = np.stack((vertices.min(axis=0), vertices.max(axis=0)))
+    expected_scale = 1.0 / bounding_radius_from_bbox(bbox)
+
+    scaled_vertices, scaled_bbox, scale_factor = normalize_scale(vertices, bbox)
+    assert scale_factor == pytest.approx(expected_scale)
+    assert bounding_radius_from_bbox(scaled_bbox) == pytest.approx(1.0, abs=1e-12)
+    np.testing.assert_allclose(scaled_vertices, vertices * scale_factor, atol=1e-12)
+
+
+def test_normalize_scale_rejects_degenerate() -> None:
+    vertices = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]], dtype=np.float64)
+    bbox = np.stack((vertices.min(axis=0), vertices.max(axis=0)))
+    with pytest.raises(ValueError, match="degenerate"):
+        normalize_scale(vertices, bbox)
 
 
 def test_orient_and_center_places_bbox_at_origin() -> None:

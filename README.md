@@ -91,6 +91,9 @@ object:
   path: /absolute/path/to/model.obj
   # Native OBJ up-axis. Defaults to Z; set Y for legacy Y-up models.
   up_axis: Z
+  # Scale the object so its union bounding-box half-diagonal is 1.0 world unit (default).
+  # Camera/light distance ranges and static positions are in these normalized units.
+  normalize: true
   class_name: my_object
   class_id: 0
 camera:
@@ -139,6 +142,15 @@ framing:
 `output.train_val_split` controls the train/val partition written by the dataset layout.
 Set `output.split_seed` for a reproducible split (`null` means non-reproducible). This seed
 is independent of `camera.seed` and other config seeds.
+
+### Object scale
+
+`object.normalize` defaults to `true`. After orient and center, Rembrandt scales the mesh so
+the union axis-aligned bounding box has a **half-diagonal of 1.0** world unit. Camera
+`distance_range`, static `lights[].location`, and randomized light distance bands are
+authored in these normalized units, so defaults work for small and large source assets alike.
+Set `normalize: false` only when your YAML positions and distances were written for the
+asset's native Blender/OBJ scale.
 
 ### Labels
 

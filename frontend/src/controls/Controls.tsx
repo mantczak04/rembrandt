@@ -29,6 +29,7 @@ export type ControlsProps = {
   posesError: string | null;
   onObjectPathInputChange: (path: string) => void;
   onObjectUpAxisChange: (upAxis: SourceUpAxis) => void;
+  onObjectNormalizeChange: (normalize: boolean) => void;
   onLoadMesh: () => void;
   onCameraChange: (camera: CameraConfig) => void;
   onConfigChange: (config: RembrandtConfig) => void;
@@ -49,6 +50,7 @@ export default function Controls({
   posesError,
   onObjectPathInputChange,
   onObjectUpAxisChange,
+  onObjectNormalizeChange,
   onLoadMesh,
   onCameraChange,
   onConfigChange,
@@ -144,6 +146,18 @@ export default function Controls({
           <option value="Z">Z-up OBJ</option>
         </select>
       </div>
+      <label className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          checked={config.object.normalize ?? true}
+          onChange={(event) => onObjectNormalizeChange(event.target.checked)}
+        />
+        Normalize to unit size
+      </label>
+      <p className={styles.hint}>
+        Distances and light energy assume a unit-sized object. Disable only if your config
+        uses the asset&apos;s native units.
+      </p>
 
       <h2 className={styles.sectionTitle}>Camera sampling</h2>
       <p className={styles.hint}>

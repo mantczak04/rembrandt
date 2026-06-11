@@ -66,24 +66,23 @@ def test_build_preview_pose_geometry_ground_plane_at_bbox_base() -> None:
 
 
 def test_band_display_radius_wraps_large_objects() -> None:
+    from rembrandt.convention import bounding_radius_from_bbox
     from tests.test_paths import CHESS_OBJ
 
     if not CHESS_OBJ.is_file():
         pytest.skip("requires large sample mesh at test-obj/chess.obj")
 
-    mesh = load_preview_mesh(CHESS_OBJ)
+    mesh = load_preview_mesh(CHESS_OBJ, normalize=True)
     distance_range = (3.0, 5.0)
     radius = band_display_radius(mesh.bbox, distance_range)
     bbox = np.asarray(mesh.bbox, dtype=np.float64)
-    corner_radius = max(
-        float(np.linalg.norm(corner))
-        for corner in (
-            (bbox[0, 0], bbox[0, 1], bbox[0, 2]),
-            (bbox[1, 0], bbox[1, 1], bbox[1, 2]),
-        )
-    )
+    corner_radius = bounding_radius_from_bbox(bbox)
+    assert corner_radius == pytest.approx(1.0, abs=1e-5)
     assert radius == pytest.approx(max(corner_radius, distance_range[1]))
-    assert corner_radius > 4.0
+
+    raw_mesh = load_preview_mesh(CHESS_OBJ, normalize=False)
+    raw_bbox = np.asarray(raw_mesh.bbox, dtype=np.float64)
+    assert bounding_radius_from_bbox(raw_bbox) > corner_radius
 
 
 def test_preview_band_uses_display_radius_for_legibility() -> None:

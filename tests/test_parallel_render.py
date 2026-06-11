@@ -93,6 +93,7 @@ def test_merge_run_metadata(tmp_path: Path) -> None:
 def _mock_render_scene() -> MagicMock:
     scene = MagicMock()
     scene.target_radius_about.return_value = 1.0
+    scene.normalize_target.return_value = 1.0
     return scene
 
 

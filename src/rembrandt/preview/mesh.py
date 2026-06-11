@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rembrandt.convention import SourceUpAxis, orient_and_center
+from rembrandt.convention import SourceUpAxis, normalize_scale, orient_and_center
 from rembrandt.errors import ModelFileNotFoundError
 
 
@@ -27,19 +27,26 @@ class PreviewMesh:
     bbox: list[list[float]]
 
 
-def load_preview_mesh(path: str | Path, *, up_axis: SourceUpAxis = "Z") -> PreviewMesh:
+def load_preview_mesh(
+    path: str | Path,
+    *,
+    up_axis: SourceUpAxis = "Z",
+    normalize: bool = True,
+) -> PreviewMesh:
     """Load an ``.obj`` file, orient it to the canonical frame, and return preview geometry.
 
     Args:
         path: Filesystem path to a Wavefront ``.obj`` file.
         up_axis: Native up-axis of the source OBJ.
+        normalize: When True, scale centered geometry so the union bbox half-diagonal
+            is 1.0 world unit.
 
     Returns:
         Serializable mesh data ready for the preview API / Three.js.
 
     Raises:
         ModelFileNotFoundError: If ``path`` does not exist.
-        ValueError: If the file contains no vertices.
+        ValueError: If the file contains no vertices or normalization is degenerate.
     """
     obj_path = Path(path)
     if not obj_path.is_file():
@@ -52,6 +59,8 @@ def load_preview_mesh(path: str | Path, *, up_axis: SourceUpAxis = "Z") -> Previ
 
     vertex_array = np.asarray(vertices, dtype=np.float64)
     centered, bbox = orient_and_center(vertex_array, up_axis=up_axis)
+    if normalize:
+        centered, bbox, _scale = normalize_scale(centered, bbox)
     return PreviewMesh(
         positions=centered.reshape(-1).tolist(),
         indices=[index for triangle in _triangles for index in triangle],

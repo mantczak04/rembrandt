@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from rembrandt.config import FramingConfig, LabelsConfig, RembrandtConfig, load_config
+from rembrandt.convention import bounding_radius_from_bbox
 from rembrandt.preview.mesh import load_preview_mesh
 from rembrandt.web.app import create_app
 from tests.test_paths import SAMPLE_OBJECT_PATH, sample_object_path, sample_object_up_axis
@@ -30,6 +32,36 @@ def test_preview_mesh_returns_geometry(client: TestClient) -> None:
     assert len(payload["positions"]) > 0
     assert len(payload["indices"]) > 0
     assert len(payload["bbox"]) == 2
+
+
+def test_preview_mesh_honors_normalize_flag(tmp_path: Path, client: TestClient) -> None:
+    obj_path = tmp_path / "scaled_box.obj"
+    obj_path.write_text(
+        "\n".join(
+            [
+                "v 0 0 0",
+                "v 4 4 4",
+                "f 1 2 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    normalized = client.post(
+        "/api/preview/mesh",
+        json={"path": str(obj_path), "normalize": True},
+    )
+    assert normalized.status_code == 200
+    normalized_bbox = np.asarray(normalized.json()["bbox"], dtype=np.float64)
+    assert bounding_radius_from_bbox(normalized_bbox) == pytest.approx(1.0, abs=1e-12)
+
+    raw = client.post(
+        "/api/preview/mesh",
+        json={"path": str(obj_path), "normalize": False},
+    )
+    assert raw.status_code == 200
+    raw_bbox = np.asarray(raw.json()["bbox"], dtype=np.float64)
+    assert bounding_radius_from_bbox(raw_bbox) > bounding_radius_from_bbox(normalized_bbox)
 
 
 def test_preview_mesh_missing_path_returns_404(client: TestClient) -> None:

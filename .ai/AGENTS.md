@@ -43,11 +43,13 @@ violated, but treat them as design constraints, not just test targets.
    numbers the backend hands it. Never port pose sampling, band geometry, or the
    orient/center transform into TypeScript. If the frontend needs a computed value, add
    an endpoint.
-3. **One orientation/centering convention, defined once.** `convention.py` holds both the
-   `bpy.ops.wm.obj_import` axes and the pure-Python `orient_and_center()` mapping used by
-   the preview. Source OBJ up-axis is explicit (`object.up_axis`, default `Z`, optional
-   `Y`) and both paths must derive from that declaration — they must not drift.
-   `test_orient_and_center_matches_bpy_import` (bpy-marked) is the parity check.
+3. **One orientation/centering/scale convention, defined once.** `convention.py` holds the
+   `bpy.ops.wm.obj_import` axes, the pure-Python `orient_and_center()` mapping, and
+   bbox-based scale normalization (`bounding_radius_from_bbox`, `normalize_scale`) used
+   by the preview. Source OBJ up-axis is explicit (`object.up_axis`, default `Z`,
+   optional `Y`) and both paths must derive from that declaration — they must not drift.
+   `test_orient_and_center_matches_bpy_import` (bpy-marked) checks orientation parity;
+   `test_orientation_parity.py` also guards centering + scale parity.
 4. **+Z is world up; cameras/lights use -Z forward, Y up.** Elevation is measured from the
    XY plane (`z = distance * sin(elevation)`). Objects are oriented from their declared
    source up-axis into +Z and centered on their bounding-box center.

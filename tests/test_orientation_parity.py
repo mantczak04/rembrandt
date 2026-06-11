@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from rembrandt.convention import SourceUpAxis, bounding_radius_from_bbox
 from rembrandt.preview.mesh import load_preview_mesh
 from rembrandt.scene import Scene
 from tests.fixture_factories import write_two_offset_cubes_obj
@@ -35,6 +36,37 @@ def _scene_union_bbox(scene: Scene) -> np.ndarray:
     return np.stack((coords.min(axis=0), coords.max(axis=0)))
 
 
+def _load_scene_with_canonical_frame(
+    obj_path: Path,
+    *,
+    up_axis: SourceUpAxis = "Z",
+) -> Scene:
+    scene = Scene()
+    scene.load_object(obj_path, up_axis=up_axis)
+    scene.center_target()
+    scene.normalize_target()
+    return scene
+
+
+def _assert_normalized_parity(
+    obj_path: Path,
+    *,
+    up_axis: SourceUpAxis = "Z",
+) -> None:
+    preview = load_preview_mesh(obj_path, up_axis=up_axis, normalize=True)
+    preview_vertices = np.asarray(preview.positions, dtype=np.float64).reshape(-1, 3)
+    preview_bbox = np.asarray(preview.bbox, dtype=np.float64)
+
+    scene = _load_scene_with_canonical_frame(obj_path, up_axis=up_axis)
+    assert scene.targets
+    scene_vertices = _scene_vertices(scene)
+    scene_bbox = _scene_union_bbox(scene)
+
+    _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+    assert bounding_radius_from_bbox(preview_bbox) == pytest.approx(1.0, abs=1e-5)
+    assert bounding_radius_from_bbox(scene_bbox) == pytest.approx(1.0, abs=1e-5)
+
+
 @pytest.mark.bpy
 def test_preview_mesh_matches_scene_geometry() -> None:
     """Preview API output and bpy scene vertices share the same oriented frame."""
@@ -44,50 +76,21 @@ def test_preview_mesh_matches_scene_geometry() -> None:
     if not obj_path.is_file():
         pytest.skip(f"sample object not found: {obj_path}")
 
-    preview = load_preview_mesh(obj_path, up_axis=sample_object_up_axis())
-    preview_vertices = np.asarray(preview.positions, dtype=np.float64).reshape(-1, 3)
-
-    scene = Scene()
-    scene.load_object(obj_path, up_axis=sample_object_up_axis())
-    scene.center_target()
-    assert scene.targets
-    scene_vertices = _scene_vertices(scene)
-
-    _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+    _assert_normalized_parity(obj_path, up_axis=sample_object_up_axis())
 
 
 @pytest.mark.bpy
 def test_preview_mesh_matches_scene_geometry_on_y_up_fixture() -> None:
     """Regression guard using a committed asymmetric Y-up fixture."""
     pytest.importorskip("bpy")
-
-    preview = load_preview_mesh(FIXTURE_OBJ, up_axis="Y")
-    preview_vertices = np.asarray(preview.positions, dtype=np.float64).reshape(-1, 3)
-
-    scene = Scene()
-    scene.load_object(FIXTURE_OBJ, up_axis="Y")
-    scene.center_target()
-    assert scene.targets
-    scene_vertices = _scene_vertices(scene)
-
-    _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+    _assert_normalized_parity(FIXTURE_OBJ, up_axis="Y")
 
 
 @pytest.mark.bpy
 def test_preview_mesh_matches_scene_geometry_on_z_up_fixture() -> None:
     """Regression guard using a committed asymmetric Z-up fixture."""
     pytest.importorskip("bpy")
-
-    preview = load_preview_mesh(Z_UP_FIXTURE_OBJ, up_axis="Z")
-    preview_vertices = np.asarray(preview.positions, dtype=np.float64).reshape(-1, 3)
-
-    scene = Scene()
-    scene.load_object(Z_UP_FIXTURE_OBJ, up_axis="Z")
-    scene.center_target()
-    assert scene.targets
-    scene_vertices = _scene_vertices(scene)
-
-    _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+    _assert_normalized_parity(Z_UP_FIXTURE_OBJ, up_axis="Z")
 
 
 @pytest.mark.bpy
@@ -102,16 +105,7 @@ def test_preview_mesh_matches_scene_geometry_on_chess_board_object_z_up() -> Non
             "copy 12951_Stone_Chess_Board_v1_L3.obj into test-obj/ to run this check",
         )
 
-    preview = load_preview_mesh(obj_path, up_axis="Z")
-    preview_vertices = np.asarray(preview.positions, dtype=np.float64).reshape(-1, 3)
-
-    scene = Scene()
-    scene.load_object(obj_path, up_axis="Z")
-    scene.center_target()
-    assert scene.targets
-    scene_vertices = _scene_vertices(scene)
-
-    _assert_vertex_sets_allclose(preview_vertices, scene_vertices)
+    _assert_normalized_parity(obj_path, up_axis="Z")
 
 
 @pytest.mark.bpy
@@ -120,17 +114,7 @@ def test_multi_mesh_union_bbox_centered_at_origin_and_matches_preview(tmp_path: 
     pytest.importorskip("bpy")
 
     obj_path = write_two_offset_cubes_obj(tmp_path / "two_offset_cubes.obj")
-    preview = load_preview_mesh(obj_path, up_axis="Z")
-    preview_bbox = np.asarray(preview.bbox, dtype=np.float64)
-
-    scene = Scene()
-    scene.load_object(obj_path, up_axis="Z")
-    assert len(scene.targets) == 2
-    scene.center_target()
-
-    scene_bbox = _scene_union_bbox(scene)
-    np.testing.assert_allclose(scene_bbox, preview_bbox, atol=1e-5)
-    np.testing.assert_allclose(scene_bbox.mean(axis=0), 0.0, atol=1e-5)
+    _assert_normalized_parity(obj_path, up_axis="Z")
 
 
 @pytest.mark.bpy

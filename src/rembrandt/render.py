@@ -199,11 +199,13 @@ def _run_metadata_payload(
     *,
     resolved_object_path: Path,
     frame_records: list[dict[str, Any]],
+    normalization_scale: float | None = None,
 ) -> dict[str, Any]:
     """Build the JSON payload written to ``run.json``."""
     return {
         "config": cfg.model_dump(mode="json"),
         "resolved_object_path": str(resolved_object_path),
+        "normalization_scale": normalization_scale,
         "frames": frame_records,
     }
 
@@ -223,10 +225,21 @@ def merge_run_metadata(
     """
     partial_paths = sorted(run_dir.glob("run.frames.worker_*.json"))
     frame_records: list[dict[str, Any]] = []
+    normalization_scales: list[float | None] = []
     for partial_path in partial_paths:
         payload = json.loads(partial_path.read_text(encoding="utf-8"))
         frame_records.extend(payload["frames"])
+        normalization_scales.append(payload.get("normalization_scale"))
     frame_records.sort(key=lambda record: record["frame"])
+
+    if normalization_scales:
+        first_scale = normalization_scales[0]
+        if not all(scale == first_scale for scale in normalization_scales):
+            msg = "worker partial metadata disagrees on normalization_scale"
+            raise ValueError(msg)
+        normalization_scale = first_scale
+    else:
+        normalization_scale = None
 
     (run_dir / "run.json").write_text(
         json.dumps(
@@ -234,6 +247,7 @@ def merge_run_metadata(
                 cfg,
                 resolved_object_path=resolved_object_path,
                 frame_records=frame_records,
+                normalization_scale=normalization_scale,
             ),
             indent=2,
         ),
@@ -337,6 +351,9 @@ def render_from_config(
     scene = scene_factory() if scene_factory is not None else Scene()
     scene.load_object(object_path, up_axis=cfg.object.up_axis)
     scene.center_target()
+    normalization_scale: float | None = None
+    if cfg.object.normalize:
+        normalization_scale = scene.normalize_target()
 
     randomize_lights = cfg.light_randomization.mode == "random"
 
@@ -507,7 +524,13 @@ def render_from_config(
 
     if worker_partial_metadata_path is not None:
         worker_partial_metadata_path.write_text(
-            json.dumps({"frames": frame_records}, indent=2),
+            json.dumps(
+                {
+                    "frames": frame_records,
+                    "normalization_scale": normalization_scale,
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
     elif write_run_metadata:
@@ -517,6 +540,7 @@ def render_from_config(
                     cfg,
                     resolved_object_path=object_path,
                     frame_records=frame_records,
+                    normalization_scale=normalization_scale,
                 ),
                 indent=2,
             ),

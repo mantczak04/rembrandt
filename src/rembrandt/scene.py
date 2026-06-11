@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Literal
 
 import bpy
-from mathutils import Vector
+import numpy as np
+from mathutils import Matrix, Vector
 
 from rembrandt.camera.fit import fit_camera_location
 from rembrandt.camera.intrinsics import limiting_fov_from_camera
@@ -14,7 +15,7 @@ from rembrandt.camera.orientation import (
     require_nonzero_direction,
     rotation_euler_from_forward,
 )
-from rembrandt.convention import SourceUpAxis, obj_import_axes
+from rembrandt.convention import SourceUpAxis, bounding_radius_from_bbox, obj_import_axes
 from rembrandt.errors import ModelFileNotFoundError, RenderEngineUnavailableError
 from rembrandt.light_poses import DEFAULT_LIGHT_ENERGY
 from rembrandt.obj_assets import normalize_obj_mtllibs, resolve_texture_file
@@ -513,3 +514,54 @@ class Scene:
         for target in self.targets:
             target.location -= center
         bpy.context.view_layer.update()
+
+    def normalize_target(self, *, target_radius: float = 1.0) -> float:
+        """Uniformly scale all targets about the world origin to the canonical radius.
+
+        Must be called after ``center_target()``.
+
+        Args:
+            target_radius: Desired half-diagonal of the union bounding box.
+
+        Returns:
+            The applied uniform scale factor.
+
+        Raises:
+            RuntimeError: If no target has been loaded.
+            ValueError: If the union bounding box has zero radius.
+        """
+        if not self.targets:
+            raise RuntimeError("No target loaded. Call load_object() first.")
+
+        world_corners = self._target_world_corners()
+        min_corner = Vector(
+            (
+                min(corner.x for corner in world_corners),
+                min(corner.y for corner in world_corners),
+                min(corner.z for corner in world_corners),
+            )
+        )
+        max_corner = Vector(
+            (
+                max(corner.x for corner in world_corners),
+                max(corner.y for corner in world_corners),
+                max(corner.z for corner in world_corners),
+            )
+        )
+        bbox = np.array(
+            [
+                [min_corner.x, min_corner.y, min_corner.z],
+                [max_corner.x, max_corner.y, max_corner.z],
+            ],
+            dtype=np.float64,
+        )
+        radius = bounding_radius_from_bbox(bbox)
+        if radius == 0.0:
+            raise ValueError("cannot normalize degenerate geometry with zero bounding radius")
+
+        scale_factor = target_radius / radius
+        scale_matrix = Matrix.Scale(scale_factor, 4)
+        for target in self.targets:
+            target.matrix_world = scale_matrix @ target.matrix_world
+        bpy.context.view_layer.update()
+        return scale_factor

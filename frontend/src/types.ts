@@ -72,6 +72,7 @@ export type PreviewPoses = {
 export type ObjectConfig = {
   path: string;
   up_axis?: SourceUpAxis;
+  normalize?: boolean;
   class_name?: string;
   class_id?: number;
 };

@@ -1,21 +1,22 @@
 object:
-  path: /absolute/path/to/model.obj
+  path: /home/macko/ant/chessboard/chessboard.obj
   up_axis: Z
-  class_name: my_object
+  normalize: true
+  class_name: chessboard
   class_id: 0
 camera:
-  n: 10
+  n: 100
   azimuth_range:
   - 0.0
   - 360.0
   elevation_range:
-  - -10.0
-  - 30.0
+  - 9.0
+  - 90.0
   distance_range:
-  - 3.0
-  - 5.0
+  - 0.1
+  - 1.4
   strategy: random
-  seed: 42
+  seed: null
   look_at:
   - 0.0
   - 0.0
@@ -54,8 +55,8 @@ lights:
 render:
   focal_length: 50.0
   resolution:
-  - 640
-  - 640
+  - 320
+  - 320
   engine: EEVEE
   samples: 32
 output:
@@ -63,13 +64,41 @@ output:
   train_val_split: 0.8
   split_seed: null
 background:
-  mode: none
-  image_dir: null
+  mode: image
+  image_dir: /home/macko/ant/backgrounds
   seed: null
   color:
   - 0.05
   - 0.05
   - 0.05
+light_randomization:
+  mode: random
+  count_range:
+  - 1
+  - 3
+  light_types:
+  - SUN
+  azimuth_range:
+  - 42.0
+  - 360.0
+  elevation_range:
+  - 15.0
+  - 80.0
+  distance_range:
+  - 1.0
+  - 4.4
+  energy_scale_range:
+  - 0.5
+  - 4.4
+  color_jitter: 0.0
+  area_size_range:
+  - 0.5
+  - 5.8
+  look_at:
+  - 0.0
+  - 0.0
+  - 0.0
+  seed: null
 labels:
   enabled: true
   min_visible_pixels: 25
@@ -79,25 +108,18 @@ framing:
   - 0.15
   - 0.75
   seed: null
-# Optional: randomized photo backgrounds (default mode is none)
-# background:
-#   mode: image
-#   image_dir: ./backgrounds
-#   seed: 7
-# Optional: per-frame randomized light rigs (default mode is static)
-# light_randomization:
-#   mode: random
-#   count_range: [1, 3]
-#   light_types: [POINT, SUN, AREA]
-#   elevation_range: [10.0, 80.0]
-#   energy_scale_range: [0.5, 2.0]
-#   color_jitter: 0.15
-#   seed: 7
-# Optional: sensor-domain post-processing (default mode is off)
-# postfx:
-#   mode: random
-#   gaussian_noise_sigma: [0.0, 8.0]
-#   blur_radius: [0.0, 1.2]
-#   jpeg_quality: [55, 95]
-#   exposure_ev: [-0.7, 0.7]
-#   seed: 7
+postfx:
+  mode: 'off'
+  gaussian_noise_sigma:
+  - 0.0
+  - 8.0
+  blur_radius:
+  - 0.0
+  - 1.2
+  jpeg_quality:
+  - 55
+  - 95
+  exposure_ev:
+  - -0.7
+  - 0.7
+  seed: null

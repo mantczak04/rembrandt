@@ -108,3 +108,38 @@ def orient_and_center(
         (centered.min(axis=0), centered.max(axis=0)),
     )
     return centered, bbox
+
+
+def bounding_radius_from_bbox(bbox: npt.NDArray[np.float64]) -> float:
+    """Half-diagonal of an axis-aligned bbox ``[[min], [max]]`` (shape (2, 3))."""
+    half_extent = (bbox[1] - bbox[0]) / 2.0
+    return float(np.linalg.norm(half_extent))
+
+
+def normalize_scale(
+    vertices: npt.NDArray[np.float64],
+    bbox: npt.NDArray[np.float64],
+    *,
+    target_radius: float = 1.0,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]:
+    """Scale centered vertices and bbox about the origin to the target radius.
+
+    Must be called only on geometry already centered on the origin (for example
+    after ``orient_and_center``).
+
+    Args:
+        vertices: Array of shape ``(n, 3)`` with centered vertex positions.
+        bbox: Axis-aligned bounds ``[[min], [max]]`` in the centered frame.
+        target_radius: Desired half-diagonal of the scaled bbox.
+
+    Returns:
+        A tuple of ``(scaled_vertices, scaled_bbox, scale_factor)``.
+
+    Raises:
+        ValueError: If the bbox has zero bounding radius.
+    """
+    radius = bounding_radius_from_bbox(bbox)
+    if radius == 0.0:
+        raise ValueError("cannot normalize degenerate geometry with zero bounding radius")
+    scale_factor = target_radius / radius
+    return vertices * scale_factor, bbox * scale_factor, scale_factor
