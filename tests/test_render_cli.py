@@ -490,6 +490,8 @@ def test_render_smoke_writes_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyP
     val_images = list((run_dir / "dataset" / "images" / "val").glob("*.png"))
     assert len(train_images) + len(val_images) == 2
     assert (run_dir / "dataset" / "labels" / "train").is_dir()
+    assert (run_dir / "dataset" / "train_yolo.py").is_file()
+    assert (run_dir / "dataset" / "README.md").is_file()
 
 
 def test_render_from_config_postfx_records_sampled_values(tmp_path: Path) -> None:

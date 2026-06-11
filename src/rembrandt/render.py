@@ -390,6 +390,8 @@ def render(
         class_names={cfg.object.class_id: cfg.object.class_name},
         train_fraction=cfg.output.train_val_split,
         seed=cfg.output.split_seed,
+        imgsz=cfg.render.resolution[0],
+        background_mode=cfg.background.mode,
     )
     if stats:
         print_label_stats(summarize_labels(dataset_dir))

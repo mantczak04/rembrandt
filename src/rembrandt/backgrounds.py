@@ -16,6 +16,10 @@ from PIL import Image
 
 from rembrandt.errors import BackgroundDirectoryNotFoundError
 
+BG20K_ATTRIBUTION = (
+    "BG-20k (MIT): Bridging Composite and Real: Towards End-to-End Deep Image Matting (IJCV 2021)."
+)
+
 _EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 

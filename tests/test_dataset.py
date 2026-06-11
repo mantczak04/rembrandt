@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 import yaml
 
+from rembrandt.backgrounds import BG20K_ATTRIBUTION
 from rembrandt.dataset import (
     parse_yolo_label_line,
     print_label_stats,
     split_indices,
     summarize_labels,
+    validate_yolo_dataset,
+    write_training_handoff,
     write_yolo_dataset,
 )
 
@@ -90,9 +93,15 @@ def test_write_yolo_dataset_layout(tmp_path: Path) -> None:
         class_names={0: "pawn"},
         train_fraction=0.75,
         seed=7,
+        imgsz=640,
     )
 
     assert data_yaml == out_dir / "data.yaml"
+    assert (out_dir / "train_yolo.py").is_file()
+    assert (out_dir / "README.md").is_file()
+    train_script = (out_dir / "train_yolo.py").read_text(encoding="utf-8")
+    assert "imgsz=640" in train_script
+    validate_yolo_dataset(out_dir)
     assert not list(run_dir.glob("frame_*.png"))
     train_images = sorted((out_dir / "images" / "train").glob("*.png"))
     val_images = sorted((out_dir / "images" / "val").glob("*.png"))
@@ -122,6 +131,7 @@ def test_write_yolo_dataset_creates_empty_labels_when_missing(tmp_path: Path) ->
         class_names={0: "object"},
         train_fraction=0.8,
         seed=0,
+        imgsz=320,
     )
 
     label = out_dir / "labels" / "train" / "frame_0000.txt"
@@ -190,4 +200,84 @@ def test_write_yolo_dataset_no_frames_raises(tmp_path: Path) -> None:
             class_names={0: "object"},
             train_fraction=0.8,
             seed=0,
+            imgsz=640,
         )
+
+
+def test_write_training_handoff_includes_bg20k_when_image_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    write_training_handoff(dataset_dir, imgsz=512, background_mode="image")
+
+    readme = (dataset_dir / "README.md").read_text(encoding="utf-8")
+    assert BG20K_ATTRIBUTION in readme
+    assert "pip install ultralytics" in readme
+    assert "python train_yolo.py" in readme
+
+    script = (dataset_dir / "train_yolo.py").read_text(encoding="utf-8")
+    assert "imgsz=512" in script
+    assert 'data="data.yaml"' in script
+
+
+def test_write_training_handoff_omits_bg20k_when_none_mode(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    write_training_handoff(dataset_dir, imgsz=640, background_mode="none")
+
+    readme = (dataset_dir / "README.md").read_text(encoding="utf-8")
+    assert BG20K_ATTRIBUTION not in readme
+    assert "Ultralytics applies its own train-time augmentations" in readme
+
+
+def test_validate_yolo_dataset_rejects_invalid_label_line(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    _write_valid_dataset_layout(dataset_dir)
+    bad_label = dataset_dir / "labels" / "train" / "frame_0000.txt"
+    bad_label.write_text("0 0.5 0.5 1.5 0.2\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid label line"):
+        validate_yolo_dataset(dataset_dir)
+
+
+def test_validate_yolo_dataset_rejects_missing_label(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    _write_valid_dataset_layout(dataset_dir)
+    (dataset_dir / "labels" / "train" / "frame_0000.txt").unlink()
+
+    with pytest.raises(ValueError, match="pairing mismatch"):
+        validate_yolo_dataset(dataset_dir)
+
+
+def test_validate_yolo_dataset_rejects_bad_data_yaml(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "data.yaml").write_text("path: .\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing required key"):
+        validate_yolo_dataset(dataset_dir)
+
+
+def _write_valid_dataset_layout(dataset_dir: Path) -> None:
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    (dataset_dir / "data.yaml").write_text(
+        "\n".join(
+            [
+                "path: .",
+                "train: images/train",
+                "val: images/val",
+                "names:",
+                "  0: object",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for split, label_line in {
+        "train": "0 0.5 0.5 0.2 0.2\n",
+        "val": "",
+    }.items():
+        image_dir = dataset_dir / "images" / split
+        label_dir = dataset_dir / "labels" / split
+        image_dir.mkdir(parents=True)
+        label_dir.mkdir(parents=True)
+        (image_dir / "frame_0000.png").write_bytes(b"png")
+        (label_dir / "frame_0000.txt").write_text(label_line, encoding="utf-8")

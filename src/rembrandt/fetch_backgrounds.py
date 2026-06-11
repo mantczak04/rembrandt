@@ -11,6 +11,8 @@ from typing import Annotated
 import typer
 from PIL import Image
 
+from rembrandt.backgrounds import BG20K_ATTRIBUTION
+
 DEFAULT_DATASET = "unography/BG-20k-1200px"
 
 app = typer.Typer(
@@ -144,10 +146,7 @@ def fetch_command(
         f"Wrote {len(written)} background images to {out_dir.resolve()}. "
         f"Set background.image_dir: {out_dir} in your render config."
     )
-    typer.echo(
-        "BG-20k (MIT): Bridging Composite and Real: Towards End-to-End Deep "
-        "Image Matting (IJCV 2021)."
-    )
+    typer.echo(BG20K_ATTRIBUTION)
 
 
 def main() -> None:
