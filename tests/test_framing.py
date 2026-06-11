@@ -159,3 +159,40 @@ def test_sample_frame_framing_rejects_negative_frame_index() -> None:
             fill_range=(0.5, 0.5),
             seed=0,
         )
+
+
+def test_fitted_camera_distance_matches_scene_helper_for_fill() -> None:
+    """Framing and scene fit math agree for fill=0.5."""
+    from math import isclose, sqrt
+
+    from rembrandt.camera.fit import fit_camera_location
+
+    camera_location = (4.0, 1.0, 2.0)
+    look_at = (0.0, 0.0, 0.0)
+    target_radius = 1.2
+    focal_length = 50.0
+    resolution = (640, 480)
+    fit_margin = fill_to_fit_margin(0.5)
+    fov_rad = limiting_fov_for_focal_length(focal_length, resolution)
+
+    framing_distance = fitted_camera_distance(
+        camera_location=camera_location,
+        look_at=look_at,
+        target_radius=target_radius,
+        focal_length=focal_length,
+        resolution=resolution,
+        fit_margin=fit_margin,
+    )
+    fitted_location = fit_camera_location(
+        requested_location=camera_location,
+        fit_about=look_at,
+        target_radius=target_radius,
+        fov_rad=fov_rad,
+        fit_margin=fit_margin,
+    )
+    scene_distance = sqrt(
+        (fitted_location[0] - look_at[0]) ** 2
+        + (fitted_location[1] - look_at[1]) ** 2
+        + (fitted_location[2] - look_at[2]) ** 2
+    )
+    assert isclose(framing_distance, scene_distance, rel_tol=1e-9)

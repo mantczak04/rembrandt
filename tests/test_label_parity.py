@@ -11,10 +11,8 @@ from PIL import Image
 from rembrandt.annotations import bbox_from_mask, mask_from_alpha
 from rembrandt.camera.intrinsics import intrinsics_as_k_matrix
 from rembrandt.scene import Scene
+from tests.fixture_factories import write_two_offset_cubes_obj
 from tests.test_paths import chess_board_object_path, sample_object_path, sample_object_up_axis
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TWO_CUBE_FIXTURE_OBJ = PROJECT_ROOT / "tests" / "fixtures" / "two_offset_cubes.obj"
 
 
 def _bbox_iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
@@ -104,12 +102,29 @@ def _mask_bbox_from_render(
     return bbox
 
 
+def _assert_mask_bbox_matches_projected_vertices(
+    scene: Scene,
+    tmp_path: Path,
+    *,
+    resolution: int = 128,
+) -> None:
+    scene.add_camera()
+    scene.add_light(light_type="SUN", location=(4.0, -4.0, 6.0), look_at=(0.0, 0.0, 0.0))
+    scene.move_camera(location=(4.0, 0.0, 2.0), look_at=(0.0, 0.0, 0.0))
+
+    frame_path = tmp_path / "parity.png"
+    mask_bbox = _mask_bbox_from_render(scene, frame_path, resolution=resolution)
+    projected_bbox = _projected_vertex_bbox(scene, width=resolution, height=resolution)
+
+    assert _bbox_contains(projected_bbox, mask_bbox)
+    assert _bbox_iou(mask_bbox, projected_bbox) > 0.9
+
+
 @pytest.mark.bpy
 @pytest.mark.parametrize(
     "obj_path,up_axis",
     [
         (sample_object_path(), sample_object_up_axis()),
-        (TWO_CUBE_FIXTURE_OBJ, "Z"),
         (chess_board_object_path(), "Z"),
     ],
 )
@@ -126,14 +141,17 @@ def test_mask_bbox_matches_projected_vertices(
     scene = Scene()
     scene.load_object(obj_path, up_axis=up_axis)  # type: ignore[arg-type]
     scene.center_target()
-    scene.add_camera()
-    scene.add_light(light_type="SUN", location=(4.0, -4.0, 6.0), look_at=(0.0, 0.0, 0.0))
-    scene.move_camera(location=(4.0, 0.0, 2.0), look_at=(0.0, 0.0, 0.0))
+    _assert_mask_bbox_matches_projected_vertices(scene, tmp_path)
 
-    resolution = 128
-    frame_path = tmp_path / "parity.png"
-    mask_bbox = _mask_bbox_from_render(scene, frame_path, resolution=resolution)
-    projected_bbox = _projected_vertex_bbox(scene, width=resolution, height=resolution)
 
-    assert _bbox_contains(projected_bbox, mask_bbox)
-    assert _bbox_iou(mask_bbox, projected_bbox) > 0.9
+@pytest.mark.bpy
+def test_mask_bbox_matches_projected_vertices_on_two_offset_cubes(tmp_path: Path) -> None:
+    """Multi-mesh OBJ parity using an in-test generated two-cube fixture."""
+    pytest.importorskip("bpy")
+
+    obj_path = write_two_offset_cubes_obj(tmp_path / "two_offset_cubes.obj")
+    scene = Scene()
+    scene.load_object(obj_path, up_axis="Z")
+    assert len(scene.targets) == 2
+    scene.center_target()
+    _assert_mask_bbox_matches_projected_vertices(scene, tmp_path)

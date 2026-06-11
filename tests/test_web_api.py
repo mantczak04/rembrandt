@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from rembrandt.config import RembrandtConfig, load_config
+from rembrandt.config import FramingConfig, LabelsConfig, RembrandtConfig, load_config
 from rembrandt.preview.mesh import load_preview_mesh
 from rembrandt.web.app import create_app
 from tests.test_paths import SAMPLE_OBJECT_PATH, sample_object_path, sample_object_up_axis
@@ -77,6 +77,19 @@ def test_preview_poses_invalid_camera_params_returns_400(client: TestClient) -> 
     )
 
     assert response.status_code == 400
+
+
+def test_config_defaults_matches_pydantic_schema(client: TestClient) -> None:
+    response = client.get("/api/config/defaults")
+
+    assert response.status_code == 200
+    payload = response.json()
+    config = RembrandtConfig.model_validate(payload)
+    assert config.object.path == ""
+    assert config.camera.n == 10
+    assert config.camera.seed is None
+    assert config.framing.fill_range == FramingConfig().fill_range
+    assert config.labels.min_visible_pixels == LabelsConfig().min_visible_pixels
 
 
 def test_save_config_writes_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,9 +7,11 @@ Rembrandt generates synthetic computer-vision training datasets from 3D models. 
 user supplies an `.obj`, configures camera coverage and lighting, and Rembrandt renders
 many images of the object from randomized camera poses.
 
-It is **early-stage**. Today the render step writes PNG frames only. YOLO labels,
-train/val dataset layout, 2D augmentations, and training-script generation are planned
-follow-up work — do not assume they exist.
+The render pipeline writes alpha-mask YOLO labels, a train/val dataset layout with
+`data.yaml`, and training handoff files (`train_yolo.py`, `README.md`). Use `--frames-only`
+to opt out of dataset layout and write flat `frame_*.png` files only. Use `--workers N` to
+parallelize across separate Blender processes. Use `--stats` to print label distributions
+after a run.
 
 ## Two tools, one shared config
 
@@ -22,7 +24,7 @@ YAML config (`RembrandtConfig` in `src/rembrandt/config.py`):
   object and ground plane so the user can judge whether the angular coverage makes sense.
   It does **not** preview rendered images, trigger renders, or monitor progress.
 - **`rembrandt-render CONFIG_PATH`** — the Blender/`bpy` render step that reads the YAML
-  and writes frames.
+  and writes frames plus (by default) a YOLO dataset under `<output.dir>/<stamp>/dataset/`.
 
 ## Hard rules (do not break these)
 
@@ -53,6 +55,10 @@ violated, but treat them as design constraints, not just test targets.
    (a display radius so the band wraps the object legibly). Do **not** apply camera-fit /
    framing math in the preview — fit only affects distance, which the preview ignores.
 6. **Single object input source.** The user pastes a filesystem path; there is no upload.
+7. **Labels come from the rendered alpha mask, never from projected geometry at runtime.**
+   Vertex projection exists only as a bpy-lane parity test (`test_label_parity.py`).
+8. **Post-fx must be geometry-preserving and applied after label extraction.** Anything
+   that moves pixels belongs in 3D, not in `postfx.py`.
 
 ## Commands
 
@@ -71,8 +77,8 @@ make dev          # uvicorn --reload on :8000  +  Vite dev server on :5173 (prox
 # Launch the configurator
 rembrandt-serve                                # FastAPI + SPA at http://127.0.0.1:8000/
 
-# Render frames from a config
-rembrandt-render ./configs/dataset.yaml        # writes <output.dir>/<timestamp>/frame_XXXX.png
+# Render dataset from a config
+rembrandt-render ./configs/dataset.yaml        # writes <output.dir>/<stamp>/dataset/ by default
 ```
 
 ### Checks before considering work done
@@ -115,10 +121,16 @@ Match the existing style in `scene.py` and `camera_poses.py`:
 
 ```
 src/rembrandt/
+├── annotations.py         # alpha-mask → YOLO bbox helpers. NO bpy.
+├── backgrounds.py         # background image discovery + compositing. NO bpy.
 ├── camera_poses.py        # pure pose sampling (random / fibonacci). NO bpy.
 ├── config.py              # pydantic v2 schema + YAML load/dump. NO bpy.
 ├── convention.py          # axis constants + orient_and_center(). Single source of truth. NO bpy.
+├── dataset.py             # train/val layout, data.yaml, training handoff files. NO bpy.
 ├── errors.py              # ModelFileNotFoundError, etc.
+├── framing.py             # per-frame fill + center-jitter sampling. NO bpy.
+├── light_poses.py         # randomized light rig sampling. NO bpy.
+├── postfx.py              # geometry-preserving sensor post-processing. NO bpy.
 ├── render.py              # `rembrandt-render` entry; drives Scene. (no direct bpy import)
 ├── scene.py               # Blender scene wrapper. bpy lives here.
 ├── camera/
@@ -130,17 +142,13 @@ src/rembrandt/
 │   └── geometry.py        # bpy-free band/points/ground-plane builders. NO bpy.
 └── web/
     ├── app.py             # FastAPI factory + SPA static serving. NO bpy.
-    ├── api.py             # /preview/mesh, /preview/poses, /config/save. NO bpy.
+    ├── api.py             # /preview/mesh, /preview/poses, /config/save, /config/defaults. NO bpy.
     └── serve.py           # `rembrandt-serve` uvicorn entry. NO bpy.
 ```
 
 Entry points (`pyproject.toml`): `rembrandt-serve = rembrandt.web.serve:main`,
 `rembrandt-render = rembrandt.render:main`. `main.py` is a legacy shim that just calls
 `render.main`.
-
-The planned-but-not-yet-built modules listed in `.ai/AGENTS.md` (`randomize.py`,
-`annotations.py`, `augment.py`, `backgrounds.py`, `dataset.py`, `templates/`) do not
-exist yet — that tree describes the intended layout, not the current one.
 
 ## Testing notes
 
@@ -154,6 +162,7 @@ exist yet — that tree describes the intended layout, not the current one.
   `test_web_api_module_is_bpy_free`). If you add a bpy import to a forbidden module, that
   test — not a runtime crash — is what catches it.
 - Web routes are tested via `fastapi.testclient.TestClient`.
+- Multi-mesh parity tests generate the two-cube OBJ in-test via `tests/fixture_factories.py`.
 
 ## Gotchas
 
@@ -162,14 +171,24 @@ exist yet — that tree describes the intended layout, not the current one.
 - **The `bpy` wheel is ~700MB.** CI installs need aggressive caching.
 - **`src/` layout:** you must `pip install -e .` before `import rembrandt` works; running
   scripts from the repo root won't find the package otherwise.
+- **EEVEE needs a GPU when running headless bpy.** CPU-only machines should use
+  `render.engine: CYCLES`. Rembrandt raises `RenderEngineUnavailableError` rather than
+  silently switching engines mid-dataset.
+- **When framing is enabled, `distance_range` is a lower bound** — sampled `fill` controls
+  apparent object size via `fit_margin = 1 / fill`.
+- **Labels default ON.** With `background.mode: none`, frames are composited over
+  `background.color` instead of the Blender world background.
 - **Camera fit can override sampled distances.** `Scene.add_camera` and `Scene.move_camera`
   default to `fit_target=True`: if a sampled distance is too close to frame the object,
   the camera is pushed back to the fit distance. For large objects with a small
   `distance_range`, many sampled distances may be overridden. Pass `fit_target=False` for
   exact sampled distances.
-- **`output.train_val_split` is reserved** and not consumed by the current frame renderer.
 - **Object paths in YAML** may be absolute, relative to the config file, or relative to the
   CWD — `resolve_object_path` tries them in that order.
+- **Output dir resolution** differs slightly: absolute → as-is; else config-relative; else
+  CWD if it exists there; for a new directory, created next to the config.
+- **Seeds are independent** across camera, background, light randomization, framing, postfx,
+  and train/val split (`output.split_seed`).
 
 ## Further context
 

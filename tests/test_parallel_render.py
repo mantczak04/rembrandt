@@ -13,10 +13,12 @@ from PIL import Image
 
 from rembrandt.backgrounds import choose_background
 from rembrandt.config import RembrandtConfig, dump_config, load_config
+from rembrandt.errors import WorkerRenderError
 from rembrandt.framing import sample_frame_framing
 from rembrandt.light_poses import sample_light_rig
 from rembrandt.postfx import sample_frame_postfx
 from rembrandt.render import (
+    _wait_for_workers,
     merge_run_metadata,
     parse_frame_range,
     render,
@@ -179,10 +181,14 @@ def test_render_coordinator_spawns_workers(
 
     commands: list[list[str]] = []
 
-    def fake_run(command: list[str], *, check: bool) -> None:
+    def fake_popen(command: list[str]) -> MagicMock:
         commands.append(command)
+        process = MagicMock()
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        return process
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
     render(config_path, workers=2, frames_only=True)
 
@@ -194,6 +200,165 @@ def test_render_coordinator_spawns_workers(
         assert "--workers-total" in command
         assert command[command.index("--workers-total") + 1] == "2"
         assert "--frames-only" in command
+
+
+class _FakeWorkerProcess:
+    def __init__(
+        self,
+        index: int,
+        events: list[tuple[str, int]],
+        *,
+        exit_code: int = 0,
+        complete_after_starts: int | None = None,
+    ) -> None:
+        self.index = index
+        self.events = events
+        self.exit_code = exit_code
+        self.complete_after_starts = complete_after_starts
+        self.terminated = False
+        events.append(("start", index))
+
+    def poll(self) -> int | None:
+        if self.complete_after_starts is not None:
+            started = sum(1 for event, _ in self.events if event == "start")
+            if started >= self.complete_after_starts:
+                self.events.append(("poll_complete", self.index))
+                return self.exit_code
+            return None
+        if self.exit_code != 0 and not self.terminated:
+            self.events.append(("poll_complete", self.index))
+            return self.exit_code
+        return None
+
+    def wait(self) -> int:
+        self.events.append(("wait", self.index))
+        return self.exit_code
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.events.append(("terminate", self.index))
+
+
+def test_coordinator_starts_all_workers_before_waiting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 4, "seed": 0},
+        output={"dir": str(tmp_path / "out")},
+        labels={"enabled": False},
+    )
+    dump_config(cfg, config_path)
+
+    events: list[tuple[str, int]] = []
+    worker_count = 3
+
+    def fake_popen(command: list[str]) -> _FakeWorkerProcess:
+        index = sum(1 for event, _ in events if event == "start")
+        return _FakeWorkerProcess(
+            index,
+            events,
+            complete_after_starts=worker_count,
+        )
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr("rembrandt.render.merge_run_metadata", lambda *args, **kwargs: None)
+
+    render(config_path, workers=worker_count, frames_only=True)
+
+    first_completion = next(
+        index for index, (event, _) in enumerate(events) if event == "poll_complete"
+    )
+    last_start = max(index for index, (event, worker) in enumerate(events) if event == "start")
+    assert last_start < first_completion
+
+
+def test_coordinator_raises_and_terminates_on_worker_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 4, "seed": 0},
+        output={"dir": str(tmp_path / "out")},
+    )
+    dump_config(cfg, config_path)
+
+    events: list[tuple[str, int]] = []
+
+    def fake_popen(command: list[str]) -> _FakeWorkerProcess:
+        index = sum(1 for event, _ in events if event == "start")
+        exit_code = 1 if index == 0 else 0
+        return _FakeWorkerProcess(index, events, exit_code=exit_code)
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    merge_calls: list[Path] = []
+
+    def track_merge(run_dir: Path, **kwargs: object) -> None:
+        merge_calls.append(run_dir)
+
+    monkeypatch.setattr("rembrandt.render.merge_run_metadata", track_merge)
+
+    with pytest.raises(WorkerRenderError, match="0") as exc_info:
+        render(config_path, workers=3)
+
+    assert exc_info.value.failed_worker_indices == [0]
+    assert any(event == ("terminate", 1) for event in events)
+    assert any(event == ("terminate", 2) for event in events)
+    assert merge_calls == []
+    run_dirs = list(tmp_path.glob("out/*"))
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+    assert not (run_dir / "run.json").exists()
+    assert not (run_dir / "dataset").exists()
+
+
+def test_coordinator_caps_workers_at_frame_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "render.yaml"
+    cfg = RembrandtConfig(
+        object={"path": str(sample_object_path())},
+        camera={"n": 2, "seed": 0},
+        output={"dir": str(tmp_path / "out")},
+        labels={"enabled": False},
+    )
+    dump_config(cfg, config_path)
+
+    popen_calls = 0
+
+    def fake_popen(command: list[str]) -> MagicMock:
+        nonlocal popen_calls
+        popen_calls += 1
+        process = MagicMock()
+        process.poll.return_value = 0
+        process.wait.return_value = 0
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setattr("rembrandt.render.merge_run_metadata", lambda *args, **kwargs: None)
+
+    render(config_path, workers=8, frames_only=True)
+
+    assert popen_calls == 2
+
+
+def test_wait_for_workers_returns_failed_indices() -> None:
+    first = MagicMock()
+    first.poll.side_effect = [None, 1]
+    first.wait.return_value = 1
+    second = MagicMock()
+    second.poll.return_value = None
+    second.wait.return_value = 0
+
+    failed = _wait_for_workers([(0, first), (1, second)])
+
+    assert failed == [0]
+    second.terminate.assert_called_once()
 
 
 def test_parallel_render_matches_sequential_metadata(tmp_path: Path) -> None:

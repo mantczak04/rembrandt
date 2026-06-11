@@ -1,31 +1,35 @@
-import { createDefaultConfig } from "./defaultConfig";
 import type { RembrandtConfig } from "./types";
 
 /** Merge user edits with schema defaults for an honest save preview. */
-export function mergeConfigDefaults(config: RembrandtConfig): RembrandtConfig {
-  const defaults = createDefaultConfig(config.object.path);
+export function mergeConfigDefaults(
+  config: RembrandtConfig,
+  schemaDefaults: RembrandtConfig,
+): RembrandtConfig {
   return {
-    ...defaults,
+    ...schemaDefaults,
     ...config,
-    object: { ...defaults.object, ...config.object },
-    camera: { ...defaults.camera, ...config.camera },
-    lights: config.lights ?? defaults.lights,
-    render: { ...defaults.render, ...config.render },
-    output: { ...defaults.output, ...config.output },
-    background: { ...defaults.background, ...config.background },
+    object: { ...schemaDefaults.object, ...config.object },
+    camera: { ...schemaDefaults.camera, ...config.camera },
+    lights: config.lights ?? schemaDefaults.lights,
+    render: { ...schemaDefaults.render, ...config.render },
+    output: { ...schemaDefaults.output, ...config.output },
+    background: { ...schemaDefaults.background, ...config.background },
     light_randomization: {
-      ...defaults.light_randomization,
+      ...schemaDefaults.light_randomization,
       ...config.light_randomization,
     },
-    labels: { ...defaults.labels, ...config.labels },
-    framing: { ...defaults.framing, ...config.framing },
-    postfx: { ...defaults.postfx, ...config.postfx },
+    labels: { ...schemaDefaults.labels, ...config.labels },
+    framing: { ...schemaDefaults.framing, ...config.framing },
+    postfx: { ...schemaDefaults.postfx, ...config.postfx },
   };
 }
 
 /** Serialize the config object as YAML for display only (no domain logic). */
-export function configToYaml(config: RembrandtConfig): string {
-  return serializeYaml(mergeConfigDefaults(config));
+export function configToYaml(
+  config: RembrandtConfig,
+  schemaDefaults: RembrandtConfig,
+): string {
+  return serializeYaml(mergeConfigDefaults(config, schemaDefaults));
 }
 
 function serializeYaml(value: unknown, indent = 0): string {

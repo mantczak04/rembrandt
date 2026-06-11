@@ -6,6 +6,7 @@ import datetime
 import json
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -33,6 +34,7 @@ from rembrandt.backgrounds import (
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.config import RembrandtConfig, load_config
 from rembrandt.dataset import print_label_stats, summarize_labels, write_yolo_dataset
+from rembrandt.errors import WorkerRenderError
 from rembrandt.framing import sample_frame_framing
 from rembrandt.light_poses import sample_light_rig
 from rembrandt.postfx import apply_postfx, sample_frame_postfx
@@ -399,6 +401,7 @@ def render_from_config(
             location=pose.location,
             look_at=framing.look_at,
             fit_margin=framing.fit_margin,
+            fit_about=pose.look_at,
         )
         frame_path = output_dir / f"frame_{index:04d}.png"
         rendered = scene.render(
@@ -552,6 +555,38 @@ def _worker_command(
     return command
 
 
+def _wait_for_workers(
+    processes: list[tuple[int, subprocess.Popen[bytes]]],
+) -> list[int]:
+    """Poll parallel workers until all exit; terminate siblings on first failure.
+
+    Args:
+        processes: ``(worker_index, popen)`` pairs launched by the coordinator.
+
+    Returns:
+        Worker indices that exited with a non-zero status.
+    """
+    remaining = dict(processes)
+    failed: list[int] = []
+    while remaining:
+        for index, process in list(remaining.items()):
+            code = process.poll()
+            if code is None:
+                continue
+            del remaining[index]
+            if code != 0:
+                failed.append(index)
+        if failed and remaining:
+            for process in remaining.values():
+                process.terminate()
+            for process in remaining.values():
+                process.wait()
+            remaining.clear()
+        if remaining:
+            time.sleep(0.2)
+    return failed
+
+
 def render(
     config_path: Path,
     *,
@@ -595,13 +630,13 @@ def render(
         raise ValueError(msg)
 
     if workers > 1:
-        if workers < 1:
-            raise ValueError(f"workers must be >= 1, got {workers}")
+        workers = min(workers, cfg.camera.n)
         run_stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         output_root = resolve_output_dir(path, cfg.output.dir)
         output_dir = run_dir or (output_root / run_stamp)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        worker_processes: list[tuple[int, subprocess.Popen[bytes]]] = []
         for index in range(workers):
             command = _worker_command(
                 path,
@@ -611,7 +646,11 @@ def render(
                 frame_range=frame_range,
                 frames_only=frames_only,
             )
-            subprocess.run(command, check=True)
+            worker_processes.append((index, subprocess.Popen(command)))
+
+        failed_workers = _wait_for_workers(worker_processes)
+        if failed_workers:
+            raise WorkerRenderError(failed_workers)
 
         merge_run_metadata(
             output_dir,

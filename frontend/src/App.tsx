@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { ApiError, fetchHealth, fetchMesh, fetchPoses } from "./api";
+import { ApiError, fetchConfigDefaults, fetchHealth, fetchMesh, fetchPoses } from "./api";
 import Controls from "./controls/Controls";
 import SaveBar from "./controls/SaveBar";
 import { createDefaultConfig } from "./defaultConfig";
@@ -32,8 +32,14 @@ function posesParams(mesh: PreviewMesh, camera: CameraConfig): PreviewPosesParam
   };
 }
 
+const EMPTY_CONFIG: RembrandtConfig = {
+  object: { path: "" },
+  camera: { n: 10 },
+};
+
 export default function App() {
-  const [config, setConfig] = useState<RembrandtConfig>(() => createDefaultConfig());
+  const [schemaDefaults, setSchemaDefaults] = useState<RembrandtConfig | null>(null);
+  const [config, setConfig] = useState<RembrandtConfig>(EMPTY_CONFIG);
   const [objectPathInput, setObjectPathInput] = useState("");
   const [mesh, setMesh] = useState<PreviewMesh | null>(null);
   const [poses, setPoses] = useState<PreviewPoses | null>(null);
@@ -64,6 +70,24 @@ export default function App() {
             setApiError(error.message);
           } else {
             setApiError("Backend unreachable");
+          }
+        }
+      });
+    void fetchConfigDefaults()
+      .then((defaults) => {
+        if (!cancelled) {
+          setSchemaDefaults(defaults);
+          setConfig((current) => createDefaultConfig(current.object.path, defaults));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          if (error instanceof ApiError) {
+            setApiError(error.message);
+          } else if (error instanceof Error) {
+            setApiError(error.message);
+          } else {
+            setApiError("Failed to load config defaults");
           }
         }
       });
@@ -205,7 +229,11 @@ export default function App() {
       </div>
 
       <div className={styles.savePane}>
-        <SaveBar config={config} disabled={mesh === null} />
+        <SaveBar
+          config={config}
+          schemaDefaults={schemaDefaults}
+          disabled={mesh === null}
+        />
       </div>
     </div>
   );

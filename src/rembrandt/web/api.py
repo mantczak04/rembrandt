@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from rembrandt.config import RembrandtConfig, dump_config
+from rembrandt.config import CameraConfig, ObjectConfig, RembrandtConfig, dump_config
 from rembrandt.convention import SourceUpAxis
 from rembrandt.errors import ModelFileNotFoundError
 from rembrandt.preview.geometry import (
@@ -132,6 +132,15 @@ def preview_poses(body: PreviewPosesRequest) -> PreviewPosesResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _poses_to_response(geometry)
+
+
+@router.get("/config/defaults", response_model=RembrandtConfig)
+def config_defaults() -> RembrandtConfig:
+    """Schema defaults for the SPA (single source of truth: pydantic)."""
+    return RembrandtConfig(
+        object=ObjectConfig(path=""),
+        camera=CameraConfig(n=10),
+    )
 
 
 @router.post("/config/save", response_model=SaveConfigResponse)

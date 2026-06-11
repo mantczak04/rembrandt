@@ -23,3 +23,12 @@ class RenderEngineUnavailableError(RuntimeError):
             "or run on a machine with a GPU."
         )
         super().__init__(message or default)
+
+
+class WorkerRenderError(RuntimeError):
+    """Raised when one or more parallel render workers exit non-zero."""
+
+    def __init__(self, failed_worker_indices: list[int]) -> None:
+        self.failed_worker_indices = failed_worker_indices
+        indices = ", ".join(str(i) for i in failed_worker_indices)
+        super().__init__(f"render worker(s) failed: {indices}")

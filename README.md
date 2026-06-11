@@ -5,11 +5,9 @@ Synthetic computer vision dataset tooling from 3D models, in honour of Rembrandt
 Rembrandt currently has two local tools:
 
 - `rembrandt-serve`: a browser configurator for choosing an `.obj`, previewing camera-angle coverage in 3D, and saving a YAML config.
-- `rembrandt-render CONFIG_PATH`: a Blender / `bpy` render step that reads that YAML and writes PNG frames.
+- `rembrandt-render CONFIG_PATH`: a Blender / `bpy` render step that reads that YAML and writes a YOLO training dataset (images, labels, `data.yaml`, and training handoff files).
 
 The SPA preview is a configuration-sanity tool. It shows the sampled camera band relative to the oriented object and ground plane so you can decide whether azimuth/elevation coverage makes sense before running Blender. It does not preview rendered images, trigger renders, or monitor render progress.
-
-Rembrandt is still early-stage. The current render command writes frames only; YOLO labels, train/val dataset layout, augmentations, and training-script generation are planned follow-up work.
 
 ## Setup
 
@@ -59,14 +57,20 @@ This starts the FastAPI server at [http://127.0.0.1:8000/](http://127.0.0.1:8000
 
 ```bash
 rembrandt-render ./configs/dataset.yaml
+cd output/<stamp>/dataset && pip install ultralytics && python train_yolo.py
 ```
 
-Frames are written under `<output.dir>/<timestamp>/frame_XXXX.png`. By default, `output.dir` is `output`.
-Each run also writes `<output.dir>/<timestamp>/run.json` with the resolved config, object path, and
-per-frame camera/light/background metadata for debugging and downstream dataset tooling.
+By default, output goes to `<output.dir>/<timestamp>/dataset/` with `images/{train,val}`,
+`labels/{train,val}`, `data.yaml`, `train_yolo.py`, and `README.md`. Use `--frames-only` to
+write flat `frame_*.png` files under `<output.dir>/<timestamp>/` instead.
+
+Each run also writes `<output.dir>/<timestamp>/run.json` with the resolved config, object
+path, and per-frame camera/light/background metadata for debugging.
 
 `output.dir` may be absolute, relative to the config file, or relative to the current working
-directory (same resolution order as object paths). Object paths follow the same rules.
+directory. Resolution order: absolute → as-is; else config-relative; else CWD if it exists
+there; for a new directory, created next to the config. Object paths follow a similar order
+(absolute → config-relative → CWD).
 
 The default render engine is `EEVEE`, which requires a GPU when running headless `bpy`. On
 CPU-only machines (typical CI runners and many servers), use `render.engine: CYCLES` instead.
@@ -75,6 +79,8 @@ Rembrandt raises an explicit error rather than silently switching engines mid-da
 Use `--workers N` to render frames in parallel across `N` separate Blender processes (one
 frame subset per worker). Pose, lighting, background, framing, and post-fx sampling are
 deterministic per frame index, so parallel runs produce the same dataset as a single process.
+
+Use `--stats` after a run to print label class distributions.
 
 ## Config Format
 
@@ -85,6 +91,8 @@ object:
   path: /absolute/path/to/model.obj
   # Native OBJ up-axis. Defaults to Z; set Y for legacy Y-up models.
   up_axis: Z
+  class_name: my_object
+  class_id: 0
 camera:
   n: 10
   azimuth_range: [0.0, 360.0]
@@ -108,6 +116,13 @@ render:
 output:
   dir: output
   train_val_split: 0.8
+  split_seed: null
+labels:
+  enabled: true
+  min_visible_pixels: 25
+framing:
+  center_jitter: 0.35
+  fill_range: [0.15, 0.75]
 # Optional: randomized photo backgrounds (default mode is none)
 # background:
 #   mode: image
@@ -121,7 +136,28 @@ output:
 #   seed: 7
 ```
 
-`train_val_split` is reserved for the future dataset writer and is not consumed by the current frame renderer.
+`output.train_val_split` controls the train/val partition written by the dataset layout.
+Set `output.split_seed` for a reproducible split (`null` means non-reproducible). This seed
+is independent of `camera.seed` and other config seeds.
+
+### Labels
+
+YOLO bounding boxes are derived from the rendered alpha mask (not projected geometry at
+runtime). `labels.enabled` defaults to `true`. Frames with fewer than
+`labels.min_visible_pixels` foreground pixels get an empty label file (negative examples).
+
+### Framing
+
+When framing is active, `camera.distance_range` is a lower bound on camera distance; sampled
+`framing.fill_range` controls how large the object appears. `framing.center_jitter` offsets the
+look-at point in the image plane for in-frame translation diversity. Set `framing.seed` for
+a reproducible sequence (`null` means non-reproducible).
+
+### Post-fx
+
+`sensor-domain` effects (`postfx.mode: random`) simulate camera artifacts after label
+extraction. All post-fx is geometry-preserving — anything that moves pixels belongs in 3D,
+not here. Set `postfx.seed` for reproducibility.
 
 ### Randomized lighting
 
@@ -134,6 +170,10 @@ The default elevation band `(10, 80)` keeps sampled lights above the ground plan
 ### Randomized backgrounds
 
 When `background.mode` is `image`, Rembrandt renders each frame with a transparent film (RGBA), then alpha-composites the object over a randomly chosen photo from `background.image_dir`. The foreground pixels are never moved or scaled — only the background is resized/cropped to cover the frame. Set `background.seed` for a reproducible background sequence per run (`null` means non-reproducible). This seed is independent of `camera.seed`.
+
+With `background.mode: none` (the default), frames are composited over `background.color`
+instead of the Blender world background. Cast shadows are not preserved in composited mode
+(no shadow catcher yet) — expect a floating-object look until that lands.
 
 Recommended workflow using [BG-20k](https://huggingface.co/datasets/unography/BG-20k-1200px) (20k high-resolution photos without salient objects, MIT license):
 

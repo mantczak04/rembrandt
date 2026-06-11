@@ -1,27 +1,87 @@
-"""Tests for pure camera fit math."""
+"""Pure tests for camera push-back fit geometry."""
 
 from __future__ import annotations
 
-from math import sin
+from math import isclose, sqrt
 
-import pytest
-
-from rembrandt.camera.fit import fit_distance
-
-
-def test_fit_distance_known_value() -> None:
-    radius = 2.0
-    fov = 1.0
-    margin = 1.2
-    expected = (radius * margin) / sin(fov / 2)
-    assert fit_distance(target_radius=radius, fov_rad=fov, margin=margin) == pytest.approx(expected)
+from rembrandt.camera.fit import fit_camera_location
+from rembrandt.framing import (
+    fill_to_fit_margin,
+    fitted_camera_distance,
+    limiting_fov_for_focal_length,
+)
 
 
-def test_fit_distance_default_margin() -> None:
-    assert fit_distance(target_radius=1.0, fov_rad=1.0) == pytest.approx(1.2 / sin(0.5))
+def test_fit_camera_location_is_determined_by_anchor_only() -> None:
+    """Fitted position depends on fit_about and radius, not a separate aim point."""
+    requested_location = (5.0, 0.0, 0.0)
+    anchor = (0.0, 0.0, 0.0)
+    target_radius = 1.0
+    fov_rad = limiting_fov_for_focal_length(50.0, (640, 640))
+    fit_margin = fill_to_fit_margin(0.5)
+
+    first = fit_camera_location(
+        requested_location=requested_location,
+        fit_about=anchor,
+        target_radius=target_radius,
+        fov_rad=fov_rad,
+        fit_margin=fit_margin,
+    )
+    second = fit_camera_location(
+        requested_location=requested_location,
+        fit_about=anchor,
+        target_radius=target_radius,
+        fov_rad=fov_rad,
+        fit_margin=fit_margin,
+    )
+
+    assert first == second
+    distance = sqrt(
+        (first[0] - anchor[0]) ** 2 + (first[1] - anchor[1]) ** 2 + (first[2] - anchor[2]) ** 2
+    )
+    assert isclose(
+        distance,
+        fitted_camera_distance(
+            camera_location=requested_location,
+            look_at=anchor,
+            target_radius=target_radius,
+            focal_length=50.0,
+            resolution=(640, 640),
+            fit_margin=fit_margin,
+        ),
+        rel_tol=1e-9,
+    )
 
 
-@pytest.mark.parametrize("margin", [0.0, -1.0])
-def test_fit_distance_invalid_margin(margin: float) -> None:
-    with pytest.raises(ValueError, match="fit_margin"):
-        fit_distance(target_radius=1.0, fov_rad=1.0, margin=margin)
+def test_fitted_camera_distance_matches_fit_camera_location() -> None:
+    """Framing distance math matches the scene push-back helper for any jitter."""
+    camera_location = (5.0, 0.0, 0.0)
+    look_at = (0.0, 0.0, 0.0)
+    target_radius = 1.0
+    focal_length = 50.0
+    resolution = (640, 640)
+    fit_margin = fill_to_fit_margin(0.5)
+    fov_rad = limiting_fov_for_focal_length(focal_length, resolution)
+
+    framing_distance = fitted_camera_distance(
+        camera_location=camera_location,
+        look_at=look_at,
+        target_radius=target_radius,
+        focal_length=focal_length,
+        resolution=resolution,
+        fit_margin=fit_margin,
+    )
+    fitted_location = fit_camera_location(
+        requested_location=camera_location,
+        fit_about=look_at,
+        target_radius=target_radius,
+        fov_rad=fov_rad,
+        fit_margin=fit_margin,
+    )
+    scene_distance = sqrt(
+        (fitted_location[0] - look_at[0]) ** 2
+        + (fitted_location[1] - look_at[1]) ** 2
+        + (fitted_location[2] - look_at[2]) ** 2
+    )
+
+    assert isclose(framing_distance, scene_distance, rel_tol=1e-9)

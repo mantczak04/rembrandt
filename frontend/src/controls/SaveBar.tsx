@@ -7,6 +7,7 @@ import styles from "./Controls.module.css";
 
 export type SaveBarProps = {
   config: RembrandtConfig;
+  schemaDefaults: RembrandtConfig | null;
   disabled?: boolean;
 };
 
@@ -20,7 +21,11 @@ function normalizeFilename(filename: string): string {
     : `${trimmed}.yaml`;
 }
 
-export default function SaveBar({ config, disabled = false }: SaveBarProps) {
+export default function SaveBar({
+  config,
+  schemaDefaults,
+  disabled = false,
+}: SaveBarProps) {
   const [filename, setFilename] = useState("dataset.yaml");
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +70,9 @@ export default function SaveBar({ config, disabled = false }: SaveBarProps) {
         <button
           type="button"
           className={styles.button}
-          disabled={disabled || saving || config.object.path.trim() === ""}
+          disabled={
+            disabled || schemaDefaults === null || saving || config.object.path.trim() === ""
+          }
           onClick={() => void handleSave()}
         >
           {saving ? "Saving…" : "Save"}
@@ -89,7 +96,7 @@ export default function SaveBar({ config, disabled = false }: SaveBarProps) {
 
       {showPreview ? (
         <pre className={styles.yamlPreview} aria-label="Config YAML preview">
-          {configToYaml(config)}
+          {schemaDefaults ? configToYaml(config, schemaDefaults) : "Loading defaults…"}
         </pre>
       ) : null}
     </section>

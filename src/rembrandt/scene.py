@@ -8,7 +8,7 @@ from typing import Literal
 import bpy
 from mathutils import Vector
 
-from rembrandt.camera.fit import fit_distance
+from rembrandt.camera.fit import fit_camera_location
 from rembrandt.camera.intrinsics import limiting_fov_from_camera
 from rembrandt.camera.orientation import (
     require_nonzero_direction,
@@ -67,6 +67,7 @@ class Scene:
         self.lights: list[bpy.types.Object] = []
         self._camera_requested_location: tuple[float, float, float] | None = None
         self._camera_look_at: tuple[float, float, float] | None = None
+        self._camera_fit_about: tuple[float, float, float] | None = None
         self._camera_fit_target = False
         self._camera_fit_margin = 1.2
         if clear:
@@ -81,6 +82,7 @@ class Scene:
         self.lights = []
         self._camera_requested_location = None
         self._camera_look_at = None
+        self._camera_fit_about = None
         self._camera_fit_target = False
 
     def clear_lights(self) -> None:
@@ -162,6 +164,7 @@ class Scene:
         focal_length: float = 50.0,
         fit_target: bool = True,
         fit_margin: float = 1.2,
+        fit_about: tuple[float, float, float] | None = None,
     ) -> bpy.types.Object:
         """Create a camera, point it at a target, and set it active.
 
@@ -189,6 +192,7 @@ class Scene:
             look_at=look_at,
             fit_target=fit_target,
             fit_margin=fit_margin,
+            fit_about=fit_about,
         )
 
     def move_camera(
@@ -197,6 +201,7 @@ class Scene:
         look_at: tuple[float, float, float] = (0.0, 0.0, 0.0),
         fit_target: bool = True,
         fit_margin: float = 1.2,
+        fit_about: tuple[float, float, float] | None = None,
     ) -> bpy.types.Object:
         """Move the existing camera, point it at a target, and keep it active.
 
@@ -220,13 +225,14 @@ class Scene:
         camera_obj.location = location
 
         look_at_vec = Vector(look_at)
+        fit_about_vec = Vector(fit_about if fit_about is not None else look_at)
 
         if fit_target:
             render = bpy.context.scene.render
             self._fit_camera_to_target(
                 camera_obj=camera_obj,
                 requested_location=location,
-                look_at=look_at_vec,
+                fit_about=fit_about_vec,
                 fit_margin=fit_margin,
                 resolution_x_in_px=render.resolution_x,
                 resolution_y_in_px=render.resolution_y,
@@ -238,6 +244,7 @@ class Scene:
 
         self._camera_requested_location = location
         self._camera_look_at = look_at
+        self._camera_fit_about = tuple(fit_about_vec)
         self._camera_fit_target = fit_target
         self._camera_fit_margin = fit_margin
 
@@ -259,27 +266,22 @@ class Scene:
         *,
         camera_obj: bpy.types.Object,
         requested_location: tuple[float, float, float],
-        look_at: Vector,
+        fit_about: Vector,
         fit_margin: float,
         resolution_x_in_px: int,
         resolution_y_in_px: int,
         pixel_aspect_x: float,
         pixel_aspect_y: float,
     ) -> None:
-        """Move the camera back along its view direction until the target fits."""
+        """Move the camera back along the anchor ray until the target fits."""
         if not self.targets:
             return
 
         bpy.context.view_layer.update()
 
         corners = self._target_world_corners()
-        radius = max((corner - look_at).length for corner in corners)
-
-        requested_direction = look_at - Vector(requested_location)
-        require_nonzero_direction(
-            (requested_direction.x, requested_direction.y, requested_direction.z),
-            error_message=_CAMERA_LOOK_AT_ERROR,
-        )
+        fit_about_tuple = (fit_about.x, fit_about.y, fit_about.z)
+        radius = max((corner - fit_about).length for corner in corners)
 
         fov = limiting_fov_from_camera(
             cam=camera_obj.data,
@@ -288,14 +290,14 @@ class Scene:
             pixel_aspect_x=pixel_aspect_x,
             pixel_aspect_y=pixel_aspect_y,
         )
-        min_distance = fit_distance(
+        fitted = fit_camera_location(
+            requested_location=requested_location,
+            fit_about=fit_about_tuple,
             target_radius=radius,
             fov_rad=fov,
-            margin=fit_margin,
+            fit_margin=fit_margin,
         )
-
-        distance = max(requested_direction.length, min_distance)
-        camera_obj.location = look_at - requested_direction.normalized() * distance
+        camera_obj.location = fitted
 
     def _refit_camera_for_current_render_settings(self) -> None:
         """Re-apply target fitting after render settings such as resolution change."""
@@ -304,15 +306,17 @@ class Scene:
             or self.camera is None
             or self._camera_requested_location is None
             or self._camera_look_at is None
+            or self._camera_fit_about is None
         ):
             return
 
         render = bpy.context.scene.render
         look_at = Vector(self._camera_look_at)
+        fit_about = Vector(self._camera_fit_about)
         self._fit_camera_to_target(
             camera_obj=self.camera,
             requested_location=self._camera_requested_location,
-            look_at=look_at,
+            fit_about=fit_about,
             fit_margin=self._camera_fit_margin,
             resolution_x_in_px=render.resolution_x,
             resolution_y_in_px=render.resolution_y,

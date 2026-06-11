@@ -78,6 +78,11 @@ export async function fetchPosesNow(
   return postJson<PreviewPoses>("/preview/poses", params, init);
 }
 
+export async function fetchConfigDefaults(): Promise<RembrandtConfig> {
+  const response = await fetch(`${API_BASE}/config/defaults`);
+  return parseJsonResponse<RembrandtConfig>(response);
+}
+
 export async function saveConfig(
   config: RembrandtConfig,
   filename: string,

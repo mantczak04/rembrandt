@@ -1,18 +1,20 @@
 object:
-  path: /home/macko/projects/rembrandt/test-obj/chess.obj
+  path: /absolute/path/to/model.obj
   up_axis: Z
+  class_name: my_object
+  class_id: 0
 camera:
-  n: 30
+  n: 10
   azimuth_range:
-  - 180.0
+  - 0.0
   - 360.0
   elevation_range:
-  - 0.0
-  - 90.0
+  - -10.0
+  - 30.0
   distance_range:
-  - 7.0
-  - 13.0
-  strategy: fibonacci
+  - 3.0
+  - 5.0
+  strategy: random
   seed: 42
   look_at:
   - 0.0
@@ -59,10 +61,30 @@ render:
 output:
   dir: output
   train_val_split: 0.8
+  split_seed: null
 background:
-  mode: image
-  image_dir: ./backgrounds
-  seed: 7
+  mode: none
+  image_dir: null
+  seed: null
+  color:
+  - 0.05
+  - 0.05
+  - 0.05
+labels:
+  enabled: true
+  min_visible_pixels: 25
+framing:
+  center_jitter: 0.35
+  fill_range:
+  - 0.15
+  - 0.75
+  seed: null
+# Optional: randomized photo backgrounds (default mode is none)
+# background:
+#   mode: image
+#   image_dir: ./backgrounds
+#   seed: 7
+# Optional: per-frame randomized light rigs (default mode is static)
 # light_randomization:
 #   mode: random
 #   count_range: [1, 3]
@@ -70,4 +92,12 @@ background:
 #   elevation_range: [10.0, 80.0]
 #   energy_scale_range: [0.5, 2.0]
 #   color_jitter: 0.15
+#   seed: 7
+# Optional: sensor-domain post-processing (default mode is off)
+# postfx:
+#   mode: random
+#   gaussian_noise_sigma: [0.0, 8.0]
+#   blur_radius: [0.0, 1.2]
+#   jpeg_quality: [55, 95]
+#   exposure_ev: [-0.7, 0.7]
 #   seed: 7

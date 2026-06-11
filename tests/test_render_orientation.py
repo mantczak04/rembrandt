@@ -7,6 +7,7 @@ from pathlib import Path
 import bpy  # noqa: F401
 import numpy as np
 import pytest
+from PIL import Image
 
 from rembrandt.camera_poses import sample_camera_poses
 from rembrandt.convention import SourceUpAxis
@@ -104,3 +105,95 @@ def test_rendered_view_keeps_world_z_upright_on_chess_board_object() -> None:
         )
 
     _assert_upright_for_poses(obj_path, up_axis="Z", n_poses=8, seed=42)
+
+
+@pytest.mark.bpy
+def test_jitter_translates_without_scaling(tmp_path: Path) -> None:
+    """Look-at jitter shifts the object in-frame without changing apparent size."""
+    pytest.importorskip("bpy")
+
+    import bpy
+
+    from rembrandt.annotations import bbox_from_mask, mask_from_alpha
+    from rembrandt.framing import (
+        fill_to_fit_margin,
+        fitted_camera_distance,
+        jitter_look_at,
+        limiting_fov_for_focal_length,
+    )
+
+    resolution = 640
+    fill = 0.4
+    pose_location = (0.0, -6.0, 0.0)
+    pose_look_at = (0.0, 0.0, 0.0)
+    focal_length = 50.0
+    fit_margin = fill_to_fit_margin(fill)
+
+    def render_target(
+        *,
+        look_at: tuple[float, float, float],
+        frame_path: Path,
+    ) -> tuple[int, int, int, int]:
+        scene = Scene()
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0.0, 0.0, 0.0))
+        scene.targets = [bpy.context.object]
+        scene.center_target()
+        render_settings = bpy.context.scene.render
+        render_settings.resolution_x = resolution
+        render_settings.resolution_y = resolution
+        scene.add_camera(focal_length=focal_length)
+        scene.move_camera(
+            location=pose_location,
+            look_at=look_at,
+            fit_margin=fit_margin,
+            fit_about=pose_look_at,
+        )
+        scene.render(
+            frame_path,
+            resolution=(resolution, resolution),
+            samples=1,
+            transparent_film=True,
+        )
+        with Image.open(frame_path) as image:
+            rgba = np.asarray(image.convert("RGBA"), dtype=np.uint8)
+        bbox = bbox_from_mask(mask_from_alpha(rgba))
+        assert bbox is not None
+        return bbox
+
+    no_jitter_path = tmp_path / "no_jitter.png"
+    jitter_path = tmp_path / "jitter.png"
+
+    bbox_no_jitter = render_target(look_at=pose_look_at, frame_path=no_jitter_path)
+
+    scene_for_radius = Scene()
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0.0, 0.0, 0.0))
+    scene_for_radius.targets = [bpy.context.object]
+    scene_for_radius.center_target()
+    target_radius = scene_for_radius.target_radius_about(pose_look_at)
+
+    limiting_fov = limiting_fov_for_focal_length(focal_length, (resolution, resolution))
+    fitted_dist = fitted_camera_distance(
+        camera_location=pose_location,
+        look_at=pose_look_at,
+        target_radius=target_radius,
+        focal_length=focal_length,
+        resolution=(resolution, resolution),
+        fit_margin=fit_margin,
+    )
+    jittered_look_at = jitter_look_at(
+        look_at=pose_look_at,
+        camera_location=pose_location,
+        fitted_distance=fitted_dist,
+        limiting_fov_rad=limiting_fov,
+        center_jitter=0.5,
+        jitter_uv=(0.9, 0.0),
+    )
+    bbox_jitter = render_target(look_at=jittered_look_at, frame_path=jitter_path)
+
+    height_no_jitter = bbox_no_jitter[3] - bbox_no_jitter[1] + 1
+    height_jitter = bbox_jitter[3] - bbox_jitter[1] + 1
+    assert abs(height_no_jitter - height_jitter) <= 2
+
+    center_x_no_jitter = (bbox_no_jitter[0] + bbox_no_jitter[2]) / 2
+    center_x_jitter = (bbox_jitter[0] + bbox_jitter[2]) / 2
+    assert abs(center_x_jitter - center_x_no_jitter) >= 0.2 * resolution
