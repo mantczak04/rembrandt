@@ -72,6 +72,10 @@ The default render engine is `EEVEE`, which requires a GPU when running headless
 CPU-only machines (typical CI runners and many servers), use `render.engine: CYCLES` instead.
 Rembrandt raises an explicit error rather than silently switching engines mid-dataset.
 
+Use `--workers N` to render frames in parallel across `N` separate Blender processes (one
+frame subset per worker). Pose, lighting, background, framing, and post-fx sampling are
+deterministic per frame index, so parallel runs produce the same dataset as a single process.
+
 ## Config Format
 
 The SPA writes the same YAML schema that `rembrandt-render` consumes:

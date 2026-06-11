@@ -347,22 +347,6 @@ per-frame cost is the render itself, so workers are the only real lever besides 
 
 ---
 
-### Stage 7 — Later / optional backlog (not scheduled)
-
-- **YOLO-seg export:** masks already exist; add polygonization (OpenCV `findContours` +
-  `approxPolyDP`, or pure-python marching squares via scikit-image) → `class x1 y1 x2 y2 ...`.
-- **COCO JSON writer** alongside YOLO from the same per-frame mask/bbox records.
-- **Distractor objects** (random primitives with random materials in-scene) — the single
-  biggest remaining realism lever for detection after backgrounds + framing.
-- **Material/texture randomization** of the target.
-- **Shadow catcher** option for background mode (Cycles `is_shadow_catcher` plane → keeps
-  contact shadows in the alpha composite), addressing B4.
-- **Multi-object / multi-class scenes** — requires per-object masks (Cycles object-index
-  pass / cryptomatte), a real schema change; explicitly out of scope until single-class is
-  proven.
-
----
-
 ## 4. Suggested module map after Stage 1–3
 
 ```

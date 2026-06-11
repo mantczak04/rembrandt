@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import datetime
 import json
+import subprocess
+import sys
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 from random import Random
@@ -120,6 +123,124 @@ def resolve_background_dir(config_path: Path, image_dir: str) -> Path:
     return path.resolve()
 
 
+def parse_frame_range(frame_range: str) -> tuple[int, int]:
+    """Parse a half-open frame range ``start:end`` from CLI input.
+
+    Args:
+        frame_range: Range string with a single colon separator.
+
+    Returns:
+        ``(start, end)`` where frame indices satisfy ``start <= index < end``.
+
+    Raises:
+        ValueError: If the string is malformed or bounds are invalid.
+    """
+    if frame_range.count(":") != 1:
+        msg = f"frame range must be start:end, got {frame_range!r}"
+        raise ValueError(msg)
+    start_text, end_text = frame_range.split(":", 1)
+    try:
+        start = int(start_text)
+        end = int(end_text)
+    except ValueError as exc:
+        msg = f"frame range bounds must be integers, got {frame_range!r}"
+        raise ValueError(msg) from exc
+    if start < 0 or end < 0:
+        msg = f"frame range bounds must be >= 0, got {frame_range!r}"
+        raise ValueError(msg)
+    if start >= end:
+        msg = f"frame range start must be < end, got {frame_range!r}"
+        raise ValueError(msg)
+    return start, end
+
+
+def worker_frame_indices(
+    *,
+    n_frames: int,
+    worker_index: int,
+    num_workers: int,
+    frame_range: tuple[int, int] | None = None,
+) -> list[int]:
+    """Return the frame indices assigned to one parallel worker.
+
+    Worker ``k`` of ``N`` renders indices ``k, k+N, k+2N, ...`` optionally
+    limited to a half-open ``frame_range``.
+
+    Args:
+        n_frames: Total number of frames in the run.
+        worker_index: Zero-based worker id in ``[0, num_workers)``.
+        num_workers: Number of parallel workers.
+        frame_range: Optional half-open ``(start, end)`` limit on indices.
+
+    Returns:
+        Sorted frame indices for this worker.
+
+    Raises:
+        ValueError: If worker or frame counts are invalid.
+    """
+    if n_frames < 0:
+        raise ValueError(f"n_frames must be >= 0, got {n_frames}")
+    if num_workers < 1:
+        raise ValueError(f"num_workers must be >= 1, got {num_workers}")
+    if worker_index < 0 or worker_index >= num_workers:
+        raise ValueError(f"worker_index must be in [0, {num_workers}), got {worker_index}")
+
+    start, end = frame_range if frame_range is not None else (0, n_frames)
+    if start < 0 or end < 0 or start > end:
+        raise ValueError(f"invalid frame_range {(start, end)}")
+    end = min(end, n_frames)
+    return [index for index in range(start, end) if index % num_workers == worker_index]
+
+
+def _run_metadata_payload(
+    cfg: RembrandtConfig,
+    *,
+    resolved_object_path: Path,
+    frame_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the JSON payload written to ``run.json``."""
+    return {
+        "config": cfg.model_dump(mode="json"),
+        "resolved_object_path": str(resolved_object_path),
+        "frames": frame_records,
+    }
+
+
+def merge_run_metadata(
+    run_dir: Path,
+    *,
+    cfg: RembrandtConfig,
+    resolved_object_path: Path,
+) -> None:
+    """Merge per-worker frame metadata into ``run.json``.
+
+    Args:
+        run_dir: Run directory containing ``run.frames.worker_*.json`` files.
+        cfg: Validated render configuration.
+        resolved_object_path: Resolved path to the source ``.obj`` file.
+    """
+    partial_paths = sorted(run_dir.glob("run.frames.worker_*.json"))
+    frame_records: list[dict[str, Any]] = []
+    for partial_path in partial_paths:
+        payload = json.loads(partial_path.read_text(encoding="utf-8"))
+        frame_records.extend(payload["frames"])
+    frame_records.sort(key=lambda record: record["frame"])
+
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            _run_metadata_payload(
+                cfg,
+                resolved_object_path=resolved_object_path,
+                frame_records=frame_records,
+            ),
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    for partial_path in partial_paths:
+        partial_path.unlink()
+
+
 def _write_label_file(
     label_path: Path,
     *,
@@ -153,7 +274,11 @@ def render_from_config(
     config_path: Path,
     scene_factory: Callable[[], Scene] | None = None,
     stamp: str | None = None,
+    output_dir: Path | None = None,
+    frame_indices: Sequence[int] | None = None,
     frames_only: bool = False,
+    write_run_metadata: bool = True,
+    worker_partial_metadata_path: Path | None = None,
 ) -> Path:
     """Render frames for a validated config.
 
@@ -162,7 +287,12 @@ def render_from_config(
         config_path: Path to the YAML file (used to resolve relative object paths).
         scene_factory: Optional factory for tests; defaults to ``Scene``.
         stamp: Optional output subdirectory name; defaults to a timestamp.
+        output_dir: Optional pre-created run directory (parallel workers).
+        frame_indices: Optional subset of frame indices to render.
         frames_only: When True, skip label files and dataset layout (debugging).
+        write_run_metadata: When True, write ``run.json`` after rendering.
+        worker_partial_metadata_path: When set, write this worker's frame records
+            to the given JSON file instead of ``run.json``.
 
     Returns:
         The directory containing rendered frame PNGs (flat layout when
@@ -171,10 +301,35 @@ def render_from_config(
     """
     object_path = resolve_object_path(config_path, cfg.object.path)
     poses = sample_camera_poses(**cfg.camera.model_dump())
-    run_stamp = stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_root = resolve_output_dir(config_path, cfg.output.dir)
-    output_dir = output_root / run_stamp
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir is None:
+        run_stamp = stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_root = resolve_output_dir(config_path, cfg.output.dir)
+        output_dir = output_root / run_stamp
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    indices = list(frame_indices) if frame_indices is not None else list(range(len(poses)))
+    if not indices:
+        if write_run_metadata and worker_partial_metadata_path is None:
+            (output_dir / "run.json").write_text(
+                json.dumps(
+                    _run_metadata_payload(
+                        cfg,
+                        resolved_object_path=object_path,
+                        frame_records=[],
+                    ),
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        return output_dir
+
+    for index in indices:
+        if index < 0 or index >= len(poses):
+            msg = f"frame index {index} out of range for {len(poses)} poses"
+            raise ValueError(msg)
+
     frame_records: list[dict[str, Any]] = []
 
     scene = scene_factory() if scene_factory is not None else Scene()
@@ -207,7 +362,8 @@ def render_from_config(
         bg_dir = resolve_background_dir(config_path, cfg.background.image_dir)
         background_pool = index_backgrounds(bg_dir)
 
-    for index, pose in enumerate(poses):
+    for index in indices:
+        pose = poses[index]
         rig_summary = ""
         light_rig_record: list[dict[str, Any]] | None = None
         if randomize_lights:
@@ -346,17 +502,54 @@ def render_from_config(
             frame_record["postfx"] = postfx_record
         frame_records.append(frame_record)
 
-    run_metadata = {
-        "config": cfg.model_dump(mode="json"),
-        "resolved_object_path": str(object_path),
-        "frames": frame_records,
-    }
-    (output_dir / "run.json").write_text(
-        json.dumps(run_metadata, indent=2),
-        encoding="utf-8",
-    )
+    if worker_partial_metadata_path is not None:
+        worker_partial_metadata_path.write_text(
+            json.dumps({"frames": frame_records}, indent=2),
+            encoding="utf-8",
+        )
+    elif write_run_metadata:
+        (output_dir / "run.json").write_text(
+            json.dumps(
+                _run_metadata_payload(
+                    cfg,
+                    resolved_object_path=object_path,
+                    frame_records=frame_records,
+                ),
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
     return output_dir
+
+
+def _worker_command(
+    config_path: Path,
+    *,
+    run_dir: Path,
+    worker_index: int,
+    num_workers: int,
+    frame_range: tuple[int, int] | None,
+    frames_only: bool,
+) -> list[str]:
+    """Build the subprocess argv for one parallel render worker."""
+    command = [
+        sys.executable,
+        "-m",
+        "rembrandt.render",
+        str(config_path),
+        "--run-dir",
+        str(run_dir),
+        "--worker-index",
+        str(worker_index),
+        "--workers-total",
+        str(num_workers),
+    ]
+    if frame_range is not None:
+        command.extend(["--frame-range", f"{frame_range[0]}:{frame_range[1]}"])
+    if frames_only:
+        command.append("--frames-only")
+    return command
 
 
 def render(
@@ -364,6 +557,11 @@ def render(
     *,
     frames_only: bool = False,
     stats: bool = False,
+    workers: int = 1,
+    run_dir: Path | None = None,
+    worker_index: int | None = None,
+    num_workers: int | None = None,
+    frame_range: tuple[int, int] | None = None,
 ) -> tuple[Path, Path | None]:
     """Load a YAML config and render frames (and optionally a YOLO dataset).
 
@@ -371,6 +569,11 @@ def render(
         config_path: Path to the render config YAML file.
         frames_only: When True, skip YOLO dataset layout.
         stats: When True, print label distribution stats after dataset layout.
+        workers: Number of parallel worker processes (coordinator mode when > 1).
+        run_dir: Pre-created run directory for worker subprocesses.
+        worker_index: Zero-based worker id for subprocess rendering.
+        num_workers: Total worker count for subprocess rendering.
+        frame_range: Optional half-open frame index limit ``(start, end)``.
 
     Returns:
         ``(run_dir, data_yaml_path)`` where ``data_yaml_path`` is ``None`` when
@@ -378,7 +581,65 @@ def render(
     """
     path = Path(config_path)
     cfg = load_config(path)
-    output_dir = render_from_config(cfg, config_path=path, frames_only=frames_only)
+    object_path = resolve_object_path(path, cfg.object.path)
+    n_frames = cfg.camera.n
+
+    if workers > 1 and worker_index is not None:
+        msg = "pass either workers > 1 (coordinator) or worker_index (worker), not both"
+        raise ValueError(msg)
+    if worker_index is not None and num_workers is None:
+        msg = "num_workers is required when worker_index is set"
+        raise ValueError(msg)
+    if worker_index is not None and run_dir is None:
+        msg = "run_dir is required for worker subprocess rendering"
+        raise ValueError(msg)
+
+    if workers > 1:
+        if workers < 1:
+            raise ValueError(f"workers must be >= 1, got {workers}")
+        run_stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_root = resolve_output_dir(path, cfg.output.dir)
+        output_dir = run_dir or (output_root / run_stamp)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        for index in range(workers):
+            command = _worker_command(
+                path,
+                run_dir=output_dir,
+                worker_index=index,
+                num_workers=workers,
+                frame_range=frame_range,
+                frames_only=frames_only,
+            )
+            subprocess.run(command, check=True)
+
+        merge_run_metadata(
+            output_dir,
+            cfg=cfg,
+            resolved_object_path=object_path,
+        )
+    elif worker_index is not None:
+        assert run_dir is not None
+        assert num_workers is not None
+        indices = worker_frame_indices(
+            n_frames=n_frames,
+            worker_index=worker_index,
+            num_workers=num_workers,
+            frame_range=frame_range,
+        )
+        output_dir = render_from_config(
+            cfg,
+            config_path=path,
+            output_dir=run_dir,
+            frame_indices=indices,
+            frames_only=frames_only,
+            write_run_metadata=False,
+            worker_partial_metadata_path=run_dir / f"run.frames.worker_{worker_index:04d}.json",
+        )
+        return output_dir, None
+
+    else:
+        output_dir = render_from_config(cfg, config_path=path, frames_only=frames_only)
 
     if frames_only or not cfg.labels.enabled:
         return output_dir, None
@@ -423,13 +684,65 @@ def render_command(
             help="Print bbox center and height distributions from generated labels.",
         ),
     ] = False,
+    workers: Annotated[
+        int,
+        typer.Option(
+            "--workers",
+            min=1,
+            help="Render frames in parallel using this many worker processes.",
+        ),
+    ] = 1,
+    run_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--run-dir",
+            help="Pre-created run directory (internal worker mode).",
+            hidden=True,
+        ),
+    ] = None,
+    frame_range: Annotated[
+        str | None,
+        typer.Option(
+            "--frame-range",
+            help="Half-open frame index range start:end (internal worker mode).",
+            hidden=True,
+        ),
+    ] = None,
+    worker_index: Annotated[
+        int | None,
+        typer.Option(
+            "--worker-index",
+            min=0,
+            help="Zero-based worker id (internal worker mode).",
+            hidden=True,
+        ),
+    ] = None,
+    num_workers: Annotated[
+        int | None,
+        typer.Option(
+            "--workers-total",
+            min=1,
+            help="Total worker count (internal worker mode).",
+            hidden=True,
+        ),
+    ] = None,
 ) -> None:
     """Render dataset frames from a YAML configuration file."""
-    output_dir, data_yaml = render(config_path, frames_only=frames_only, stats=stats)
+    parsed_frame_range = parse_frame_range(frame_range) if frame_range is not None else None
+    output_dir, data_yaml = render(
+        config_path,
+        frames_only=frames_only,
+        stats=stats,
+        workers=workers,
+        run_dir=run_dir,
+        worker_index=worker_index,
+        num_workers=num_workers,
+        frame_range=parsed_frame_range,
+    )
     if data_yaml is not None:
         typer.echo(f"Finished rendering dataset to {data_yaml.parent}")
         typer.echo(str(data_yaml))
-    else:
+    elif worker_index is None:
         typer.echo(f"Finished rendering to {output_dir}")
 
 
